@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petra's Game — Witches & Princesses</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #07000f;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  user-select: none;
+}
+canvas {
+  display: block;
+  border: 2px solid #2a1050;
+  border-radius: 6px;
+  box-shadow: 0 0 40px rgba(100,0,200,0.3), 0 0 80px rgba(100,0,200,0.1);
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+// ================================================================
+//  PETRA'S GAME — Witches & Princesses  (v3)
+//  Designed by Petra (age 6) — Built with love
+//  Superpowers, Super Webs, Timer & Story!
+// ================================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ===================== CONFIGURATION =====================
+const CELL = 36;
+const LOGICAL_COLS = 7;        // smaller maze (was 9)
+const LOGICAL_ROWS = 5;        // smaller maze (was 7)
+const GRID_W = LOGICAL_COLS * 2 + 1;  // 15
+const GRID_H = LOGICAL_ROWS * 2 + 1;  // 11
+const ROOM_ROWS = 8;
+const MAP_W = GRID_W;
+const MAP_H = GRID_H + ROOM_ROWS;     // 19
+
+// Balance
+const MAX_WEBS = 8;
+const MAX_SUPER_WEBS = 3;
+const WEB_COOLDOWN = 90;
+const SUPER_WEB_COOLDOWN = 150;
+const WEB_SLOW_TIME = 90;       // 1.5s for regular web
+const SUPER_WEB_SLOW_TIME = 240; // 4s for super web (not instant death!)
+const MAX_SUPERPOWERS = 3;
+const MOVE_DELAY = 10;           // slower for kids (was 7)
+const GAME_TIME = 120 * 60;     // 120 seconds (was 90)
+const PRINCESS_FREEZE_TIME = 180; // 3s (was 6s)
+const SUMMON_TIME = 120;          // 2s (was 3s)
+const EXTRA_PASSAGES = 3;        // break walls for alternate routes
+
+// Tiles
+const WALL = 0, FLOOR = 1, PRINCESS_FLOOR = 2, REAL_WORLD = 3;
+const PRINCESS_DOOR = 4, REAL_DOOR = 5;
+
+// States
+const S = {
+  TITLE: 0, INSTRUCTIONS: 1, STORY_INTRO: 2, PLAYING: 3,
+  PRINCESS_TRAPPED: 4, HERO_FREED: 5,
+  HERO_WINS: 6, WITCH_WINS_TIME: 7
+};
+
+// ===================== GAME VARIABLES =====================
+let state = S.TITLE;
+let map = [];
+let hero, witch, webs, particles;
+let webCooldown = 0, superWebCooldown = 0;
+let princessTimer = 0, summonTimer = 0;
+let moveTimers = { hero: 0, witch: 0 };
+let keys = {};
+let time = 0;
+let gameTimer = GAME_TIME;
+let shakeAmount = 0;
+let messageAlpha = 0, messageText = '';
+let storyText = '', storyProgress = 0, storyTimer = 0;
+let witchWebCount = 0, witchSuperWebCount = 0;
+let heroSuperPowers = MAX_SUPERPOWERS;
+let heroSlowTimer = 0, heroSlowFlash = 0, heroSlowIsSuper = false;
+let superPowerCooldown = 0;
+let doorUnlocked = { princess: true, real: false };
+let heroInPrincess = false;
+let endTimer = 0;
+let introShown = false;
+let castleFightPresses = 0;
+
+// ===================== CANVAS SIZING =====================
+function resizeCanvas() {
+  canvas.width = MAP_W * CELL;
+  canvas.height = MAP_H * CELL;
+  const sx = (window.innerWidth - 16) / canvas.width;
+  const sy = (window.innerHeight - 16) / canvas.height;
+  const scale = Math.min(sx, sy, 2.5);
+  canvas.style.width = Math.floor(canvas.width * scale) + 'px';
+  canvas.style.height = Math.floor(canvas.height * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ===================== UTILITIES =====================
+function rand(a,b) { return Math.random()*(b-a)+a; }
+function randInt(a,b) { return Math.floor(rand(a,b+1)); }
+function lerp(a,b,t) { return a+(b-a)*t; }
+function spawnParticle(x,y,color,life,vx,vy,size) {
+  particles.push({x,y,color,life,maxLife:life,vx:vx||0,vy:vy||0,size:size||2});
+}
+function spawnBurst(x,y,color,count,speed,life,size) {
+  for (let i=0;i<count;i++)
+    spawnParticle(x,y,color,life||30,rand(-speed,speed),rand(-speed,speed),size||3);
+}
+
+// ===================== SOUND =====================
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+function playTone(f,d,t,v) {
+  if (!audioCtx) return;
+  try {
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.type=t||'sine'; o.frequency.setValueAtTime(f,audioCtx.currentTime);
+    g.gain.setValueAtTime(v||0.1,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+d);
+    o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d);
+  } catch(e){}
+}
+function sfxMove() { playTone(200+Math.random()*100,0.05,'square',0.03); }
+function sfxWeb() { playTone(100,0.3,'sawtooth',0.08); }
+function sfxSuperWeb() { playTone(60,0.6,'sawtooth',0.12); setTimeout(()=>playTone(50,0.4,'sine',0.1),100); }
+function sfxTrapped() { playTone(150,0.5,'sawtooth',0.15); playTone(100,0.8,'sine',0.1); }
+function sfxSlowed() { playTone(180,0.2,'triangle',0.08); }
+function sfxSuperpower() {
+  playTone(800,0.15,'sine',0.12);
+  setTimeout(()=>playTone(1200,0.2,'sine',0.1),80);
+  setTimeout(()=>playTone(1600,0.15,'sine',0.08),160);
+}
+function sfxPrincess() {
+  setTimeout(()=>playTone(523,0.2,'sine',0.08),0);
+  setTimeout(()=>playTone(659,0.3,'sine',0.08),200);
+  setTimeout(()=>playTone(784,0.2,'sine',0.06),400);
+}
+function sfxFree() {
+  [400,600,800,1000].forEach((f,i)=>setTimeout(()=>playTone(f,0.2,'sine',0.1),i*80));
+}
+function sfxWin() {
+  [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>playTone(f,0.4,'sine',0.12),i*120));
+}
+function sfxTimeWarn() { playTone(440,0.1,'square',0.06); }
+function sfxFight() { playTone(600+Math.random()*200,0.08,'sine',0.06); }
+function sfxLabyrinthEntry() { playTone(80,1,'sawtooth',0.06); setTimeout(()=>playTone(60,0.8,'sine',0.05),200); }
+
+// ===================== MAZE GENERATION =====================
+function generateMaze() {
+  map = [];
+  for (let y=0;y<MAP_H;y++) { map[y]=[]; for (let x=0;x<MAP_W;x++) map[y][x]=WALL; }
+
+  const mazeOffY = ROOM_ROWS;
+  const visited = [];
+  for (let r=0;r<LOGICAL_ROWS;r++) { visited[r]=[]; for (let c=0;c<LOGICAL_COLS;c++) visited[r][c]=false; }
+  function c2g(c,r) { return {x:c*2+1,y:r*2+1+mazeOffY}; }
+
+  // Recursive backtracker
+  const stack = [];
+  visited[LOGICAL_ROWS-1][0] = true;
+  const sg = c2g(0,LOGICAL_ROWS-1);
+  map[sg.y][sg.x] = FLOOR;
+  stack.push({c:0,r:LOGICAL_ROWS-1});
+  const dirs = [{dc:0,dr:-1},{dc:1,dr:0},{dc:0,dr:1},{dc:-1,dr:0}];
+
+  while (stack.length > 0) {
+    const cur = stack[stack.length-1];
+    const nbrs = [];
+    for (const d of dirs) {
+      const nc=cur.c+d.dc, nr=cur.r+d.dr;
+      if (nc>=0&&nc<LOGICAL_COLS&&nr>=0&&nr<LOGICAL_ROWS&&!visited[nr][nc])
+        nbrs.push({c:nc,r:nr});
+    }
+    if (nbrs.length>0) {
+      const next = nbrs[randInt(0,nbrs.length-1)];
+      visited[next.r][next.c] = true;
+      const cg=c2g(cur.c,cur.r), ng=c2g(next.c,next.r);
+      map[(cg.y+ng.y)/2][(cg.x+ng.x)/2] = FLOOR;
+      map[ng.y][ng.x] = FLOOR;
+      stack.push({c:next.c,r:next.r});
+    } else stack.pop();
+  }
+
+  // --- Add extra passages for multiple routes ---
+  const internalWalls = [];
+  for (let y=mazeOffY+1; y<MAP_H-1; y++) {
+    for (let x=1; x<MAP_W-1; x++) {
+      if (map[y][x] !== WALL) continue;
+      // Check if this wall separates two floor cells (horizontally or vertically)
+      if (y>mazeOffY && y<MAP_H-1) {
+        if (map[y-1][x]===FLOOR && map[y+1][x]===FLOOR) internalWalls.push({x,y});
+        else if (map[y][x-1]===FLOOR && map[y][x+1]===FLOOR) internalWalls.push({x,y});
+      }
+    }
+  }
+  // Shuffle and break some walls
+  for (let i=internalWalls.length-1;i>0;i--) {
+    const j=randInt(0,i);
+    [internalWalls[i],internalWalls[j]]=[internalWalls[j],internalWalls[i]];
+  }
+  for (let i=0; i<Math.min(EXTRA_PASSAGES,internalWalls.length); i++) {
+    map[internalWalls[i].y][internalWalls[i].x] = FLOOR;
+  }
+
+  // --- Princess World (rows 4-6) ---
+  const pcx = Math.floor(MAP_W/2);
+  for (let y=4;y<=6;y++) for (let x=pcx-3;x<=pcx+3;x++) map[y][x]=PRINCESS_FLOOR;
+
+  // --- Real World (rows 1-2, wider) ---
+  for (let y=1;y<=2;y++) for (let x=pcx-3;x<=pcx+3;x++) map[y][x]=REAL_WORLD;
+
+  // --- Connect maze → princess world ---
+  const exitCol = pcx;
+  map[mazeOffY][exitCol] = FLOOR;
+  if (map[mazeOffY+1]) map[mazeOffY+1][exitCol] = FLOOR;
+  const topRow = mazeOffY+1;
+  if (map[topRow][exitCol]===WALL) {
+    for (let dx=1;dx<MAP_W;dx++) {
+      let found=false;
+      for (const dir of [-1,1]) {
+        const cx2=exitCol+dx*dir;
+        if (cx2>=1&&cx2<MAP_W-1&&map[topRow][cx2]===FLOOR) {
+          for (let x=Math.min(cx2,exitCol);x<=Math.max(cx2,exitCol);x++) map[topRow][x]=FLOOR;
+          found=true; break;
+        }
+      }
+      if (found) break;
+    }
+  }
+  map[mazeOffY-1][exitCol] = PRINCESS_DOOR;
+  map[3][pcx] = REAL_DOOR;
+
+  // Player positions
+  const hg = c2g(0,LOGICAL_ROWS-1);
+  hero = {x:hg.x,y:hg.y,dir:0,trail:[],drawX:hg.x*CELL,drawY:hg.y*CELL};
+  const wg = c2g(LOGICAL_COLS-1,0);
+  witch = {x:wg.x,y:wg.y,dir:0,trail:[],drawX:wg.x*CELL,drawY:wg.y*CELL};
+}
+
+// ===================== GAME INIT =====================
+function initGame() {
+  webs=[]; particles=[];
+  webCooldown=0; superWebCooldown=0;
+  princessTimer=0; summonTimer=0;
+  moveTimers={hero:0,witch:0};
+  witchWebCount=0; witchSuperWebCount=0;
+  heroSuperPowers=MAX_SUPERPOWERS;
+  heroSlowTimer=0; heroSlowFlash=0; heroSlowIsSuper=false;
+  superPowerCooldown=0;
+  doorUnlocked={princess:true,real:false};
+  heroInPrincess=false;
+  endTimer=0; introShown=false;
+  storyText=''; storyProgress=0;
+  messageText=''; messageAlpha=0;
+  shakeAmount=0; gameTimer=GAME_TIME;
+  castleFightPresses=0;
+  generateMaze();
+}
+
+// ===================== INPUT =====================
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    initAudio();
+    if (state===S.TITLE) state=S.INSTRUCTIONS;
+    else if (state===S.INSTRUCTIONS) state=S.STORY_INTRO;
+    else if (state===S.STORY_INTRO) { state=S.PLAYING; initGame(); introShown=false; }
+    else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) state=S.TITLE;
+  }
+});
+window.addEventListener('keyup', e => { keys[e.code]=false; });
+
+// ===================== MOVEMENT =====================
+function canMove(x,y,isHero) {
+  if (x<0||x>=MAP_W||y<0||y>=MAP_H) return false;
+  const t=map[y][x];
+  if (t===WALL) return false;
+  if (t===REAL_DOOR&&!doorUnlocked.real) return false;
+  if (!isHero&&state===S.PLAYING&&(t===PRINCESS_DOOR||t===PRINCESS_FLOOR)) return false;
+  if (!isHero&&(t===REAL_DOOR||t===REAL_WORLD)) return false;
+  return true;
+}
+
+function moveEntity(e,dx,dy,isHero) {
+  const nx=e.x+dx, ny=e.y+dy;
+  if (!canMove(nx,ny,isHero)) return false;
+  e.trail.push({x:e.x,y:e.y,age:0});
+  if (e.trail.length>6) e.trail.shift();
+  e.x=nx; e.y=ny;
+  e.dir = dx!==0 ? (dx>0?1:3) : (dy>0?2:0);
+  sfxMove();
+  return true;
+}
+
+function handleInput(ek,e,isHero) {
+  const k = isHero?'hero':'witch';
+  if (moveTimers[k]>0) { moveTimers[k]--; return; }
+  let moved = false;
+  for (const [code,dx,dy] of ek) { if (keys[code]) { moved=moveEntity(e,dx,dy,isHero); break; } }
+  if (moved) moveTimers[k]=MOVE_DELAY;
+}
+
+const heroKeys = [['ArrowUp',0,-1],['ArrowDown',0,1],['ArrowLeft',-1,0],['ArrowRight',1,0]];
+const witchKeys = [['KeyW',0,-1],['KeyS',0,1],['KeyA',-1,0],['KeyD',1,0]];
+
+// ===================== SUPERPOWER =====================
+function useSuperpower() {
+  if (heroSuperPowers<=0||superPowerCooldown>0) return;
+  heroSuperPowers--;
+  superPowerCooldown=30;
+  sfxSuperpower();
+  shakeAmount=5;
+
+  const destroyPos = [];
+  for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++) destroyPos.push({x:hero.x+dx,y:hero.y+dy});
+
+  let destroyed = 0;
+  for (let i=webs.length-1;i>=0;i--) {
+    if (destroyPos.some(p=>p.x===webs[i].x&&p.y===webs[i].y)) {
+      const w=webs[i];
+      spawnBurst(w.x*CELL+CELL/2,w.y*CELL+CELL/2,w.isSuper?'rgba(0,255,100,0.9)':'rgba(200,200,255,0.9)',10,3,30,3);
+      webs.splice(i,1);
+      destroyed++;
+    }
+  }
+
+  if (heroSlowTimer>0) { heroSlowTimer=0; messageText='✨ Broke free with magic!'; messageAlpha=1; }
+
+  // Golden blast wave
+  for (let a=0;a<Math.PI*2;a+=0.3)
+    spawnParticle(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.8)',25,Math.cos(a)*rand(2,5),Math.sin(a)*rand(2,5),4);
+
+  if (destroyed>0) { messageText=`✨ Magic Blast! ${destroyed} web${destroyed>1?'s':''} destroyed!`; messageAlpha=1; }
+}
+
+// ===================== WEB PLACEMENT =====================
+function handleWebPlacement() {
+  if (keys['KeyE']&&webCooldown<=0&&witchWebCount<MAX_WEBS) {
+    if (!webs.some(w=>w.x===witch.x&&w.y===witch.y)&&!(witch.x===hero.x&&witch.y===hero.y)) {
+      webs.push({x:witch.x,y:witch.y,age:0,isSuper:false});
+      witchWebCount++; webCooldown=WEB_COOLDOWN; sfxWeb();
+      spawnBurst(witch.x*CELL+CELL/2,witch.y*CELL+CELL/2,'rgba(200,200,255,0.8)',8,2,30,3);
+    }
+    keys['KeyE']=false;
+  }
+  if (keys['KeyQ']&&superWebCooldown<=0&&witchSuperWebCount<MAX_SUPER_WEBS) {
+    if (!webs.some(w=>w.x===witch.x&&w.y===witch.y)&&!(witch.x===hero.x&&witch.y===hero.y)) {
+      webs.push({x:witch.x,y:witch.y,age:0,isSuper:true});
+      witchSuperWebCount++; superWebCooldown=SUPER_WEB_COOLDOWN; sfxSuperWeb(); shakeAmount=4;
+      spawnBurst(witch.x*CELL+CELL/2,witch.y*CELL+CELL/2,'rgba(0,255,100,0.9)',15,3,40,4);
+    }
+    keys['KeyQ']=false;
+  }
+}
+
+function handleMovement() {
+  if (heroSlowTimer<=0) handleInput(heroKeys,hero,true);
+  handleInput(witchKeys,witch,false);
+  if (keys['ShiftLeft']||keys['ShiftRight']) { useSuperpower(); keys['ShiftLeft']=false; keys['ShiftRight']=false; }
+  handleWebPlacement();
+}
+
+// ===================== GAME LOGIC =====================
+function checkCollisions() {
+  for (const web of webs) {
+    if (hero.x===web.x&&hero.y===web.y) {
+      if (heroSlowTimer>0) continue; // already stuck
+      if (web.isSuper) {
+        // Super web = long freeze (4 seconds) — NOT instant death
+        heroSlowTimer = SUPER_WEB_SLOW_TIME;
+        heroSlowIsSuper = true;
+        sfxTrapped(); shakeAmount=12;
+        messageText='☠ SUPER WEB! Stuck for 4 seconds! Use SHIFT!';
+        messageAlpha=1;
+        spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(0,255,100,0.9)',25,4,50,5);
+      } else {
+        heroSlowTimer = WEB_SLOW_TIME;
+        heroSlowIsSuper = false;
+        sfxSlowed(); shakeAmount=4;
+        messageText='🕸️ Stuck! Wait or use SHIFT!';
+        messageAlpha=1;
+        spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(200,200,255,0.8)',12,2,30,3);
+      }
+      webs.splice(webs.indexOf(web),1);
+      return;
+    }
+  }
+
+  if (state===S.PLAYING&&!heroInPrincess&&map[hero.y][hero.x]===PRINCESS_FLOOR) {
+    heroInPrincess=true;
+    state=S.PRINCESS_TRAPPED;
+    princessTimer=0; summonTimer=0; castleFightPresses=0;
+    sfxPrincess(); shakeAmount=6;
+    storyText='"Please stay in this castle and never go to the other side of this life..."';
+    storyProgress=0; storyTimer=0;
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,100,200,0.8)',25,3,40,3);
+    // Dramatic flash
+    messageText='👑 The castle has captured you!';
+    messageAlpha=1;
+  }
+
+  if (state===S.HERO_FREED&&map[hero.y][hero.x]===REAL_WORLD) {
+    state=S.HERO_WINS;
+    sfxWin(); endTimer=0;
+    // Epic homecoming burst — golden + rainbow celebration!
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.9)',60,5,80,5);
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,100,200,0.8)',30,4,60,4);
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,200,255,0.8)',30,4,60,4);
+    // Screen-wide golden rain
+    for (let i=0;i<40;i++)
+      spawnParticle(rand(0,MAP_W*CELL),0,'rgba(255,215,0,0.7)',80+rand(0,40),rand(-1,1),rand(1,3),rand(2,5));
+  }
+}
+
+function updateTimer() {
+  if (state!==S.PLAYING&&state!==S.HERO_FREED) return; // PAUSED during castle!
+  gameTimer--;
+  const sec=Math.ceil(gameTimer/60);
+  if (gameTimer>0&&gameTimer%60===0&&sec<=15) sfxTimeWarn();
+  if (gameTimer<=0) {
+    gameTimer=0; state=S.WITCH_WINS_TIME;
+    sfxTrapped(); shakeAmount=10; endTimer=0;
+  }
+}
+
+function updatePrincessState() {
+  if (state!==S.PRINCESS_TRAPPED) return;
+  princessTimer++; storyTimer++;
+  if (storyTimer%3===0&&storyProgress<storyText.length) storyProgress++;
+
+  // Princess can fight the magic with SHIFT (doesn't consume superpower)
+  if (keys['ShiftLeft']||keys['ShiftRight']) {
+    if (princessTimer<PRINCESS_FREEZE_TIME) {
+      princessTimer+=30; // skip 0.5s
+      sfxFight(); castleFightPresses++;
+      spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.7)',6,2,15,2);
+    }
+    keys['ShiftLeft']=false; keys['ShiftRight']=false;
+  }
+
+  if (princessTimer>=PRINCESS_FREEZE_TIME) {
+    summonTimer++;
+    if (summonTimer===1) {
+      messageText='🧙 The witch cannot resist the magic!';
+      messageAlpha=1;
+      shakeAmount=6;
+      // Green lightning particles
+      for (let i=0;i<20;i++)
+        spawnParticle(rand(0,MAP_W*CELL),rand(0,MAP_H*CELL),'rgba(0,255,100,0.8)',40,0,rand(-3,-1),3);
+    }
+    // Pulsing particles during summon
+    if (time%8===0)
+      spawnParticle(witch.drawX+rand(0,CELL),witch.drawY+rand(0,CELL),'rgba(0,255,100,0.6)',20,rand(-1,1),rand(-2,0),3);
+
+    if (summonTimer>=SUMMON_TIME) {
+      // EPIC SUMMONING — witch teleports!
+      const pcx=Math.floor(MAP_W/2);
+      witch.x=pcx+2; witch.y=5; witch.drawX=witch.x*CELL; witch.drawY=witch.y*CELL;
+      state=S.HERO_FREED;
+      doorUnlocked.real=true;
+      sfxFree(); shakeAmount=10;
+      messageText='✨ You are FREE! RUN HOME! ✨';
+      messageAlpha=1.5; // extra long
+      storyText=''; storyProgress=0;
+      // Big celebration burst
+      spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.9)',40,4,50,4);
+      spawnBurst(witch.x*CELL+CELL/2,witch.y*CELL+CELL/2,'rgba(0,255,100,0.9)',30,4,40,4);
+      // Flash particles across screen
+      for (let i=0;i<30;i++)
+        spawnParticle(rand(0,MAP_W*CELL),rand(0,MAP_H*CELL),'rgba(255,255,200,0.6)',30,rand(-2,2),rand(-2,2),4);
+    }
+  }
+  if (time%10===0)
+    spawnParticle(hero.x*CELL+rand(4,CELL-4),hero.y*CELL+rand(4,CELL-4),'rgba(255,150,220,0.6)',25,0,-0.5,2);
+}
+
+function updateSlowTimer() {
+  if (heroSlowTimer>0) {
+    heroSlowTimer--; heroSlowFlash++;
+    if (time%8===0) {
+      const col = heroSlowIsSuper ? 'rgba(0,255,100,0.5)' : 'rgba(200,200,255,0.5)';
+      spawnParticle(hero.x*CELL+rand(0,CELL),hero.y*CELL+rand(0,CELL),col,15,rand(-1,1),rand(-2,-0.5),2);
+    }
+    if (heroSlowTimer===0) { messageText='✨ Free from the web!'; messageAlpha=1; }
+  }
+}
+
+function updateSuperWebWarning() {
+  // Warn princess when near a super web
+  if (state!==S.PLAYING&&state!==S.HERO_FREED) return;
+  for (const w of webs) {
+    if (!w.isSuper) continue;
+    const dx=Math.abs(hero.x-w.x), dy=Math.abs(hero.y-w.y);
+    if (dx<=2&&dy<=2&&time%6===0) {
+      spawnParticle(
+        hero.x*CELL+CELL/2+rand(-10,10), hero.y*CELL+rand(-5,5),
+        'rgba(255,50,50,0.6)',15,0,-1,2
+      );
+    }
+  }
+}
+
+function updateParticles() {
+  for (let i=particles.length-1;i>=0;i--) {
+    const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.life--;
+    if (p.life<=0) particles.splice(i,1);
+  }
+}
+function updateTrails() {
+  for (const t of hero.trail) t.age++;
+  for (const t of witch.trail) t.age++;
+  hero.trail=hero.trail.filter(t=>t.age<15);
+  witch.trail=witch.trail.filter(t=>t.age<15);
+}
+function updateDrawPositions() {
+  hero.drawX=lerp(hero.drawX,hero.x*CELL,0.3);
+  hero.drawY=lerp(hero.drawY,hero.y*CELL,0.3);
+  witch.drawX=lerp(witch.drawX,witch.x*CELL,0.3);
+  witch.drawY=lerp(witch.drawY,witch.y*CELL,0.3);
+}
+function spawnAmbientParticles() {
+  if (time%25!==0) return;
+  const x=rand(0,MAP_W*CELL),y=rand(0,MAP_H*CELL);
+  const gx=Math.floor(x/CELL),gy=Math.floor(y/CELL);
+  if (gy<0||gy>=MAP_H||gx<0||gx>=MAP_W) return;
+  const t=map[gy][gx];
+  if (t===FLOOR) spawnParticle(x,y,'rgba(100,50,180,0.25)',60,rand(-0.3,0.3),rand(-0.5,-0.1),2);
+  else if (t===PRINCESS_FLOOR) spawnParticle(x,y,'rgba(255,100,200,0.25)',50,rand(-0.2,0.2),rand(-0.4,-0.1),2);
+  else if (t===REAL_WORLD) spawnParticle(x,y,'rgba(255,215,100,0.35)',50,rand(-0.2,0.2),rand(-0.3,0),2);
+}
+
+// ===================== RENDERING — MAP =====================
+function drawMap() {
+  for (let y=0;y<MAP_H;y++) {
+    for (let x=0;x<MAP_W;x++) {
+      const t=map[y][x], px=x*CELL, py=y*CELL;
+      switch(t) {
+        case WALL:
+          ctx.fillStyle='#1a0a2e'; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle='#200e38';
+          if ((x+y)%2===0) { ctx.fillRect(px+1,py+1,CELL-2,CELL/2-1); ctx.fillRect(px+1,py+CELL/2+1,CELL-2,CELL/2-2); }
+          else { ctx.fillRect(px+CELL/2,py+1,CELL/2-1,CELL/2-1); ctx.fillRect(px+1,py+CELL/2+1,CELL/2-1,CELL/2-2); }
+          break;
+        case FLOOR:
+          ctx.fillStyle='#110820'; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle='#150a28'; ctx.fillRect(px+2,py+2,CELL-4,CELL-4);
+          break;
+        case PRINCESS_FLOOR: {
+          const g=Math.sin(time*0.03)*10;
+          ctx.fillStyle=`rgb(${30+g},${10},${30+g})`; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle=`rgba(255,100,200,${0.05+Math.sin(time*0.05+x+y)*0.03})`; ctx.fillRect(px,py,CELL,CELL);
+          break; }
+        case REAL_WORLD: {
+          const g=Math.sin(time*0.04)*15;
+          const bright = (state===S.HERO_FREED) ? 1.5 : 1; // brighter when freed!
+          ctx.fillStyle=`rgb(${Math.min(255,(25+g)*bright)},${Math.min(255,(20+g)*bright)},${5*bright})`; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle=`rgba(255,215,0,${(0.05+Math.sin(time*0.06+x*2)*0.03)*bright})`; ctx.fillRect(px,py,CELL,CELL);
+          break; }
+        case PRINCESS_DOOR:
+          ctx.fillStyle='#2a1040'; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle='#ff69b4'; ctx.fillRect(px+4,py+2,CELL-8,CELL-4);
+          ctx.fillStyle='#1a0a2e'; ctx.fillRect(px+8,py+6,CELL-16,CELL-8);
+          ctx.fillStyle=`rgba(255,105,180,${0.2+Math.sin(time*0.08)*0.1})`; ctx.fillRect(px,py,CELL,CELL);
+          break;
+        case REAL_DOOR:
+          ctx.fillStyle='#2a1040'; ctx.fillRect(px,py,CELL,CELL);
+          const doorBright = doorUnlocked.real ? (0.7+Math.sin(time*0.15)*0.3) : 0;
+          ctx.fillStyle=doorUnlocked.real ? `rgb(${Math.floor(200+55*doorBright)},${Math.floor(170+85*doorBright)},0)` : '#332211';
+          ctx.fillRect(px+4,py+2,CELL-8,CELL-4);
+          ctx.fillStyle='#1a0a2e'; ctx.fillRect(px+8,py+6,CELL-16,CELL-8);
+          if (doorUnlocked.real) { ctx.fillStyle=`rgba(255,215,0,${0.3+Math.sin(time*0.12)*0.2})`; ctx.fillRect(px,py,CELL,CELL); }
+          break;
+      }
+    }
+  }
+  // Zone labels
+  ctx.save(); ctx.font='bold 11px Georgia'; ctx.textAlign='center';
+  const midX=Math.floor(MAP_W/2)*CELL+CELL/2;
+  ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.fillText('⭐ REAL WORLD ⭐',midX,1.5*CELL+5);
+  ctx.fillStyle='rgba(255,100,200,0.5)'; ctx.fillText('👑 PRINCESS CASTLE 👑',midX,4.5*CELL+5);
+  ctx.fillStyle='rgba(150,50,255,0.4)'; ctx.fillText('🕷️ WITCH LABYRINTH 🕷️',midX,(ROOM_ROWS+1)*CELL-5);
+  ctx.restore();
+}
+
+// ===================== RENDERING — CASTLE DECORATIONS =====================
+function drawCastleDecorations() {
+  const pcx = Math.floor(MAP_W/2);
+  const cx = pcx*CELL, roomL=(pcx-3)*CELL, roomR=(pcx+4)*CELL;
+  const roomT=4*CELL, roomB=7*CELL;
+
+  ctx.save();
+
+  // --- Checkered floor pattern ---
+  for (let y=4;y<=6;y++) for (let x=pcx-3;x<=pcx+3;x++) {
+    if ((x+y)%2===0) {
+      ctx.fillStyle='rgba(255,100,200,0.06)';
+      ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+    }
+  }
+
+  // --- Pillars (left and right edges) ---
+  const pillarColor = '#3a1550';
+  const capColor = '#ff69b4';
+  for (const py of [4,6]) {
+    for (const px of [pcx-3,pcx+3]) {
+      const x=px*CELL+4, y=py*CELL+2;
+      ctx.fillStyle=pillarColor;
+      ctx.fillRect(x,y,CELL-8,CELL-4);
+      ctx.fillStyle=capColor;
+      ctx.fillRect(x,y,CELL-8,4);
+      ctx.fillRect(x,y+CELL-8,CELL-8,4);
+      // Pillar shine
+      ctx.fillStyle='rgba(255,200,255,0.15)';
+      ctx.fillRect(x+3,y+4,4,CELL-12);
+    }
+  }
+
+  // --- Throne (center, row 4) ---
+  const throneX=pcx*CELL, throneY=4*CELL;
+  // Seat
+  ctx.fillStyle='#4a1060';
+  ctx.fillRect(throneX+4,throneY+10,CELL-8,CELL-12);
+  // Back
+  ctx.fillStyle='#5a1575';
+  ctx.fillRect(throneX+6,throneY+2,CELL-12,12);
+  // Trim
+  ctx.fillStyle='#ffd700';
+  ctx.fillRect(throneX+6,throneY+2,CELL-12,2);
+  ctx.fillRect(throneX+4,throneY+10,CELL-8,2);
+  // Crown on throne
+  ctx.fillStyle='#ffd700';
+  const tcx=throneX+CELL/2;
+  ctx.beginPath();
+  ctx.moveTo(tcx-5,throneY+4); ctx.lineTo(tcx-3,throneY-1);
+  ctx.lineTo(tcx,throneY+3); ctx.lineTo(tcx+3,throneY-1);
+  ctx.lineTo(tcx+5,throneY+4); ctx.fill();
+
+  // --- Candle flames (along top edge) ---
+  for (const px of [pcx-2,pcx,pcx+2]) {
+    const fx=px*CELL+CELL/2, fy=4*CELL+CELL-6;
+    // Candle stick
+    ctx.fillStyle='#aa8844';
+    ctx.fillRect(fx-2,fy,4,8);
+    // Flame (animated)
+    const flicker=Math.sin(time*0.2+px)*2;
+    ctx.fillStyle=`rgba(255,200,50,${0.7+Math.sin(time*0.3+px)*0.2})`;
+    ctx.beginPath(); ctx.arc(fx,fy-2+flicker,3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,200,0.5)';
+    ctx.beginPath(); ctx.arc(fx,fy-2+flicker,1.5,0,Math.PI*2); ctx.fill();
+    // Light glow
+    ctx.globalAlpha=0.08+Math.sin(time*0.15+px)*0.03;
+    const grd=ctx.createRadialGradient(fx,fy,0,fx,fy,CELL*1.5);
+    grd.addColorStop(0,'rgba(255,200,100,0.4)'); grd.addColorStop(1,'rgba(255,200,100,0)');
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(fx,fy,CELL*1.5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  // --- Princess NPCs (3 floating figures) ---
+  const npcs = [
+    {bx:pcx-2, by:5, color:'#88bbff', name:'💙'},
+    {bx:pcx+2, by:5, color:'#bb88ff', name:'💜'},
+    {bx:pcx, by:6, color:'#88ffbb', name:'💚'},
+  ];
+  for (const npc of npcs) {
+    const nx=npc.bx*CELL+CELL/2 + Math.sin(time*0.02+npc.bx)*6;
+    const ny=npc.by*CELL+CELL/2 + Math.cos(time*0.025+npc.by)*4;
+    const bob=Math.sin(time*0.1+npc.bx*3)*2;
+
+    // Small glow
+    ctx.globalAlpha=0.15;
+    const grd=ctx.createRadialGradient(nx,ny,0,nx,ny,CELL*0.5);
+    grd.addColorStop(0,npc.color); grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nx,ny,CELL*0.5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+
+    // Dress (small)
+    ctx.fillStyle=npc.color;
+    ctx.beginPath();
+    ctx.moveTo(nx-5,ny+1+bob); ctx.lineTo(nx+5,ny+1+bob);
+    ctx.lineTo(nx+7,ny+8+bob); ctx.lineTo(nx-7,ny+8+bob); ctx.fill();
+    // Head
+    ctx.fillStyle='#ffe0c0';
+    ctx.beginPath(); ctx.arc(nx,ny-3+bob,5,0,Math.PI*2); ctx.fill();
+    // Hair
+    ctx.fillStyle='#daa520';
+    ctx.beginPath(); ctx.arc(nx,ny-5+bob,5,Math.PI,Math.PI*2); ctx.fill();
+    // Tiara
+    ctx.fillStyle='#ffd700';
+    ctx.fillRect(nx-4,ny-9+bob,8,2);
+    // Eyes
+    ctx.fillStyle='#000';
+    ctx.beginPath();
+    ctx.arc(nx-2,ny-3+bob,1,0,Math.PI*2);
+    ctx.arc(nx+2,ny-3+bob,1,0,Math.PI*2); ctx.fill();
+    // Smile
+    ctx.strokeStyle='#000'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.arc(nx,ny-1+bob,2,0.1,Math.PI-0.1); ctx.stroke();
+  }
+
+  // --- Carpet/rug on floor (center rows) ---
+  ctx.fillStyle='rgba(180,50,100,0.12)';
+  ctx.fillRect((pcx-2)*CELL+2, 5*CELL+2, 5*CELL-4, CELL-4);
+  ctx.strokeStyle='rgba(255,200,100,0.2)'; ctx.lineWidth=1;
+  ctx.strokeRect((pcx-2)*CELL+4, 5*CELL+4, 5*CELL-8, CELL-8);
+
+  ctx.restore();
+}
+
+// ===================== RENDERING — REAL WORLD DECORATIONS =====================
+function drawRealWorldDecorations() {
+  const pcx = Math.floor(MAP_W/2);
+  ctx.save();
+
+  // --- Grass pattern on floor ---
+  for (let y=1;y<=2;y++) for (let x=pcx-3;x<=pcx+3;x++) {
+    const px=x*CELL, py=y*CELL;
+    // Green tint overlay
+    ctx.fillStyle='rgba(50,180,50,0.08)';
+    ctx.fillRect(px,py,CELL,CELL);
+    // Little grass blades
+    ctx.strokeStyle=`rgba(80,200,80,${0.15+Math.sin(time*0.04+x+y)*0.05})`;
+    ctx.lineWidth=1;
+    for (let i=0;i<3;i++) {
+      const gx=px+8+i*10, gy=py+CELL-4;
+      const sway=Math.sin(time*0.06+x+i)*2;
+      ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx+sway,gy-6); ctx.stroke();
+    }
+  }
+
+  // --- Flowers ---
+  const flowers = [
+    {x:pcx-2,y:2,c:'#ff6688'},{x:pcx+2,y:2,c:'#ffaa44'},
+    {x:pcx-1,y:1,c:'#ff88cc'},{x:pcx+1,y:1,c:'#88ccff'},
+    {x:pcx-3,y:1,c:'#ffff66'},{x:pcx+3,y:2,c:'#cc88ff'},
+  ];
+  for (const f of flowers) {
+    const fx=f.x*CELL+CELL/2, fy=f.y*CELL+CELL-8;
+    const sway=Math.sin(time*0.05+f.x)*1.5;
+    // Stem
+    ctx.strokeStyle='#44aa44'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(fx,fy+6); ctx.lineTo(fx+sway,fy); ctx.stroke();
+    // Petals
+    ctx.fillStyle=f.c;
+    for (let p=0;p<5;p++) {
+      const a=(Math.PI*2/5)*p+time*0.02;
+      ctx.beginPath();
+      ctx.arc(fx+sway+Math.cos(a)*3,fy+Math.sin(a)*3,2,0,Math.PI*2); ctx.fill();
+    }
+    // Center
+    ctx.fillStyle='#ffee55';
+    ctx.beginPath(); ctx.arc(fx+sway,fy,2,0,Math.PI*2); ctx.fill();
+  }
+
+  // --- Cottage/House (center) ---
+  const hx=pcx*CELL, hy=1*CELL;
+  const hw=CELL*1.4, hh=CELL*0.9;
+  const hcx=hx+CELL/2, hcy=hy+CELL/2;
+
+  // House body
+  ctx.fillStyle='#8B6914';
+  ctx.fillRect(hcx-hw/2, hcy-hh/2+4, hw, hh-4);
+  // Roof
+  ctx.fillStyle='#cc4444';
+  ctx.beginPath();
+  ctx.moveTo(hcx-hw/2-4, hcy-hh/2+6);
+  ctx.lineTo(hcx, hcy-hh/2-10);
+  ctx.lineTo(hcx+hw/2+4, hcy-hh/2+6);
+  ctx.fill();
+  // Door
+  ctx.fillStyle='#5a3000';
+  ctx.fillRect(hcx-4, hcy+2, 8, hh/2-2);
+  // Doorknob
+  ctx.fillStyle='#ffd700';
+  ctx.beginPath(); ctx.arc(hcx+2,hcy+8,1.5,0,Math.PI*2); ctx.fill();
+  // Windows
+  ctx.fillStyle='rgba(255,255,150,0.6)';
+  ctx.fillRect(hcx-hw/2+4, hcy-4, 7, 7);
+  ctx.fillRect(hcx+hw/2-11, hcy-4, 7, 7);
+  // Window cross bars
+  ctx.strokeStyle='#5a3000'; ctx.lineWidth=1;
+  for (const wx of [hcx-hw/2+7.5, hcx+hw/2-7.5]) {
+    ctx.beginPath(); ctx.moveTo(wx,hcy-4); ctx.lineTo(wx,hcy+3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(wx-3.5,hcy-0.5); ctx.lineTo(wx+3.5,hcy-0.5); ctx.stroke();
+  }
+  // Chimney
+  ctx.fillStyle='#884422';
+  ctx.fillRect(hcx+hw/4, hcy-hh/2-8, 6, 10);
+  // Smoke (animated)
+  for (let i=0;i<3;i++) {
+    const sx=hcx+hw/4+3+Math.sin(time*0.03+i*2)*3;
+    const sy=hcy-hh/2-12-i*6+Math.sin(time*0.04+i)*2;
+    ctx.globalAlpha=0.2-i*0.05;
+    ctx.fillStyle='rgba(200,200,220,0.5)';
+    ctx.beginPath(); ctx.arc(sx,sy,3+i,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // --- Warm light from house ---
+  const lightPulse=0.12+Math.sin(time*0.06)*0.04;
+  const lGrd=ctx.createRadialGradient(hcx,hcy,0,hcx,hcy,CELL*2);
+  lGrd.addColorStop(0,`rgba(255,220,100,${lightPulse})`);
+  lGrd.addColorStop(1,'rgba(255,220,100,0)');
+  ctx.fillStyle=lGrd; ctx.beginPath(); ctx.arc(hcx,hcy,CELL*2,0,Math.PI*2); ctx.fill();
+
+  // --- Sun (top-right area) ---
+  const sunX=(pcx+2)*CELL+CELL/2, sunY=0.5*CELL;
+  const sunPulse=Math.sin(time*0.04)*2;
+  // Sun glow
+  ctx.globalAlpha=0.15;
+  const sGrd=ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,CELL*1.5);
+  sGrd.addColorStop(0,'rgba(255,255,100,0.5)'); sGrd.addColorStop(1,'rgba(255,255,100,0)');
+  ctx.fillStyle=sGrd; ctx.beginPath(); ctx.arc(sunX,sunY,CELL*1.5,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  // Sun body
+  ctx.fillStyle='#ffdd00';
+  ctx.beginPath(); ctx.arc(sunX,sunY,8+sunPulse,0,Math.PI*2); ctx.fill();
+  // Sun rays
+  ctx.strokeStyle='rgba(255,220,50,0.4)'; ctx.lineWidth=1.5;
+  for (let i=0;i<8;i++) {
+    const a=(Math.PI*2/8)*i+time*0.02;
+    ctx.beginPath();
+    ctx.moveTo(sunX+Math.cos(a)*12,sunY+Math.sin(a)*12);
+    ctx.lineTo(sunX+Math.cos(a)*(18+sunPulse),sunY+Math.sin(a)*(18+sunPulse));
+    ctx.stroke();
+  }
+
+  // --- "HOME" text ---
+  ctx.font='bold 10px Georgia'; ctx.textAlign='center';
+  ctx.fillStyle=`rgba(255,240,200,${0.4+Math.sin(time*0.08)*0.15})`;
+  ctx.fillText('🏠',hcx,hy-2);
+
+  ctx.restore();
+}
+
+// ===================== RENDERING — WEBS =====================
+function drawWeb(web) {
+  const cx=web.x*CELL+CELL/2, cy=web.y*CELL+CELL/2;
+  const sup=web.isSuper;
+  const r=sup?CELL*0.48:CELL*0.4;
+  const pulse=Math.sin(time*0.1+web.x+web.y)*0.15+0.85;
+  ctx.save();
+
+  if (sup) {
+    ctx.globalAlpha=0.5;
+    const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,r*1.5);
+    grd.addColorStop(0,`rgba(0,255,80,${0.4+Math.sin(time*0.15)*0.2})`);
+    grd.addColorStop(1,'rgba(0,255,80,0)');
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,r*1.5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.9*pulse; ctx.strokeStyle='#00ff55'; ctx.lineWidth=2;
+  } else {
+    ctx.globalAlpha=0.7*pulse; ctx.strokeStyle='#ccccff'; ctx.lineWidth=1.5;
+  }
+
+  const spokes=sup?12:8;
+  for (let i=0;i<spokes;i++) {
+    const a=(Math.PI*2/spokes)*i;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r); ctx.stroke();
+  }
+  const rings=sup?4:3;
+  for (let ring=1;ring<=rings;ring++) {
+    const rr=r*ring/rings;
+    ctx.beginPath();
+    for (let i=0;i<=spokes;i++) {
+      const a=(Math.PI*2/spokes)*i, px2=cx+Math.cos(a)*rr, py2=cy+Math.sin(a)*rr;
+      if (i===0) ctx.moveTo(px2,py2); else ctx.lineTo(px2,py2);
+    }
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha=sup?0.5:0.3;
+  const cGrd=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+  cGrd.addColorStop(0,sup?'rgba(0,255,80,0.7)':'rgba(200,200,255,0.5)');
+  cGrd.addColorStop(1,sup?'rgba(0,255,80,0)':'rgba(200,200,255,0)');
+  ctx.fillStyle=cGrd; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+
+  if (sup) {
+    ctx.globalAlpha=0.7+Math.sin(time*0.2)*0.3;
+    ctx.font='bold 14px Georgia'; ctx.fillStyle='#00ff55'; ctx.textAlign='center';
+    ctx.fillText('☠',cx,cy+5);
+  }
+  ctx.restore();
+}
+
+// ===================== RENDERING — CHARACTERS =====================
+function drawHero(x,y) {
+  const cx=x+CELL/2, cy=y+CELL/2;
+  const b=Math.sin(time*0.15)*2;
+  const isSlowed=heroSlowTimer>0;
+  const S=1.4; // scale factor — bigger!
+  ctx.save();
+  ctx.translate(cx,cy+2); // center on character
+
+  // Magical aura glow (bigger, layered)
+  ctx.globalAlpha=heroSuperPowers>0?0.35:0.15;
+  const grd=ctx.createRadialGradient(0,0,0,0,0,CELL*1.1);
+  grd.addColorStop(0,'rgba(255,215,0,0.5)');
+  grd.addColorStop(0.5,'rgba(255,150,200,0.2)');
+  grd.addColorStop(1,'rgba(255,215,0,0)');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(0,0,CELL*1.1,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+
+  // Sparkle ring when has superpowers
+  if (heroSuperPowers>0&&!isSlowed) {
+    ctx.globalAlpha=0.3;
+    for (let i=0;i<6;i++) {
+      const a=(Math.PI*2/6)*i+time*0.04;
+      const sr=CELL*0.7;
+      const sx=Math.cos(a)*sr, sy=Math.sin(a)*sr;
+      ctx.fillStyle=`rgba(255,215,0,${0.3+Math.sin(time*0.2+i)*0.2})`;
+      ctx.beginPath(); ctx.arc(sx,sy-2+b,1.5,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  // Slow web wrapping effect
+  if (isSlowed&&Math.floor(heroSlowFlash/6)%2===0) {
+    ctx.globalAlpha=0.4;
+    ctx.strokeStyle=heroSlowIsSuper?'#00ff88':'#aaaaff'; ctx.lineWidth=heroSlowIsSuper?2.5:1.5;
+    for (let i=0;i<8;i++) {
+      const a=(Math.PI*2/8)*i+time*0.05;
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.lineTo(Math.cos(a)*CELL*0.6,Math.sin(a)*CELL*0.6); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  // --- DRESS (bigger, layered, flowing) ---
+  // Underskirt (puffs out)
+  const dressWave=Math.sin(time*0.12)*1.5;
+  ctx.fillStyle='#e080b8';
+  ctx.beginPath();
+  ctx.moveTo(-10*S, 2*S+b); ctx.lineTo(10*S, 2*S+b);
+  ctx.lineTo(13*S+dressWave, 14*S+b); ctx.lineTo(-13*S-dressWave, 14*S+b);
+  ctx.fill();
+  // Main dress
+  ctx.fillStyle='#ff9ed2';
+  ctx.beginPath();
+  ctx.moveTo(-9*S, 1*S+b); ctx.lineTo(9*S, 1*S+b);
+  ctx.lineTo(12*S+dressWave, 13*S+b); ctx.lineTo(-12*S-dressWave, 13*S+b);
+  ctx.fill();
+  // Dress sparkles
+  ctx.fillStyle='rgba(255,255,255,0.3)';
+  for (let i=0;i<4;i++) {
+    const sx=rand(-8,8)*S, sy=(4+rand(0,7))*S+b;
+    const sp=Math.sin(time*0.15+i*1.5)*0.3+0.3;
+    if (sp>0.2) { ctx.globalAlpha=sp; ctx.beginPath(); ctx.arc(sx,sy,1.2,0,Math.PI*2); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+  // Belt / sash
+  ctx.fillStyle='#ffd700';
+  ctx.fillRect(-8*S, 1*S+b, 16*S, 2*S);
+
+  // --- HEAD ---
+  ctx.fillStyle='#ffe0c0';
+  ctx.beginPath(); ctx.arc(0,-5*S+b,8*S,0,Math.PI*2); ctx.fill();
+  // Cheeks (rosy)
+  ctx.fillStyle='rgba(255,150,150,0.25)';
+  ctx.beginPath(); ctx.arc(-5*S,-3*S+b,3*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5*S,-3*S+b,3*S,0,Math.PI*2); ctx.fill();
+
+  // --- HAIR (flowing, longer) ---
+  ctx.fillStyle='#8B4513';
+  // Top hair
+  ctx.beginPath(); ctx.arc(0,-7*S+b,8.5*S,Math.PI,Math.PI*2); ctx.fill();
+  // Side hair (longer, flowing)
+  ctx.fillRect(-8.5*S,-7*S+b,3.5*S,14*S);
+  ctx.fillRect(5*S,-7*S+b,3.5*S,14*S);
+  // Hair tips (wavy)
+  ctx.beginPath();
+  ctx.arc(-6.5*S,7*S+b,2*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6.5*S,7*S+b,2*S,0,Math.PI*2); ctx.fill();
+  // Hair shine
+  ctx.fillStyle='rgba(200,150,80,0.3)';
+  ctx.beginPath(); ctx.arc(-2*S,-9*S+b,3*S,0,Math.PI*2); ctx.fill();
+
+  // --- CROWN (bigger, more ornate) ---
+  ctx.fillStyle='#ffd700';
+  ctx.beginPath();
+  ctx.moveTo(-8*S,-12*S+b);
+  ctx.lineTo(-6*S,-19*S+b); ctx.lineTo(-4*S,-13*S+b);
+  ctx.lineTo(-2*S,-20*S+b); ctx.lineTo(0,-14*S+b);
+  ctx.lineTo(2*S,-20*S+b); ctx.lineTo(4*S,-13*S+b);
+  ctx.lineTo(6*S,-19*S+b); ctx.lineTo(8*S,-12*S+b);
+  ctx.fill();
+  // Crown base band
+  ctx.fillStyle='#daa520';
+  ctx.fillRect(-8*S,-12*S+b,16*S,2.5*S);
+  // Crown gems (one per superpower, bigger)
+  const gemC=['#ff0066','#00ccff','#aa00ff'];
+  for (let i=0;i<heroSuperPowers;i++) {
+    ctx.fillStyle=gemC[i];
+    ctx.beginPath(); ctx.arc((i-1)*5*S,-16*S+b,2.2*S,0,Math.PI*2); ctx.fill();
+    // Gem shine
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.arc((i-1)*5*S-0.5,-16.5*S+b,0.8*S,0,Math.PI*2); ctx.fill();
+  }
+
+  // --- EYES (bigger, cuter) ---
+  // Whites
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(-3.5*S,-5*S+b,2.5*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3.5*S,-5*S+b,2.5*S,0,Math.PI*2); ctx.fill();
+  // Irises
+  ctx.fillStyle='#4488cc';
+  ctx.beginPath(); ctx.arc(-3.5*S,-5*S+b,1.8*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3.5*S,-5*S+b,1.8*S,0,Math.PI*2); ctx.fill();
+  // Pupils
+  ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.arc(-3.5*S,-5*S+b,1*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3.5*S,-5*S+b,1*S,0,Math.PI*2); ctx.fill();
+  // Eye sparkle
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(-2.8*S,-5.8*S+b,0.6*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4.2*S,-5.8*S+b,0.6*S,0,Math.PI*2); ctx.fill();
+
+  // --- MOUTH ---
+  ctx.strokeStyle='#cc6688'; ctx.lineWidth=1.2;
+  if (isSlowed) {
+    ctx.beginPath(); ctx.arc(0,-1.5*S+b,3*S,Math.PI+0.3,Math.PI*2-0.3); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(0,-2.5*S+b,3.5*S,0.1,Math.PI-0.1); ctx.stroke();
+  }
+
+  // --- MAGIC WAND (right side) ---
+  if (heroSuperPowers>0) {
+    const wx=10*S, wy=-2*S+b;
+    const wandAngle=Math.sin(time*0.08)*0.2-0.3;
+    ctx.save(); ctx.translate(wx,wy); ctx.rotate(wandAngle);
+    // Wand stick
+    ctx.strokeStyle='#daa520'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-14*S); ctx.stroke();
+    // Wand star
+    const starY=-15*S;
+    ctx.fillStyle=`rgba(255,255,100,${0.7+Math.sin(time*0.2)*0.3})`;
+    for (let i=0;i<5;i++) {
+      const a=(Math.PI*2/5)*i-Math.PI/2+time*0.05;
+      const ox=Math.cos(a)*3*S, oy=Math.sin(a)*3*S+starY;
+      ctx.beginPath(); ctx.arc(ox,oy,1.5*S,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(0,starY,2*S,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawWitch(x,y) {
+  const cx=x+CELL/2, cy=y+CELL/2, h=Math.sin(time*0.12)*2;
+  const S=1.4; // scale factor
+  ctx.save();
+  ctx.translate(cx,cy+2);
+
+  // Eerie green glow (layered)
+  ctx.globalAlpha=0.25;
+  const grd=ctx.createRadialGradient(0,0,0,0,0,CELL*1.1);
+  grd.addColorStop(0,'rgba(0,255,100,0.4)');
+  grd.addColorStop(0.6,'rgba(0,180,80,0.15)');
+  grd.addColorStop(1,'rgba(0,255,100,0)');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(0,0,CELL*1.1,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+
+  // Green smoke wisps
+  if (time%3===0) {
+    spawnParticle(cx+rand(-8,8),cy+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
+  }
+
+  // --- ROBE (bigger, flowing, layered) ---
+  const capeWave=Math.sin(time*0.1)*2;
+  // Cape back (dark, wider)
+  ctx.fillStyle='#0a0520';
+  ctx.beginPath();
+  ctx.moveTo(-11*S,1*S+h); ctx.lineTo(11*S,1*S+h);
+  ctx.lineTo(14*S+capeWave,15*S+h); ctx.lineTo(-14*S-capeWave,15*S+h); ctx.fill();
+  // Robe front
+  ctx.fillStyle='#1a0a30';
+  ctx.beginPath();
+  ctx.moveTo(-9*S,2*S+h); ctx.lineTo(9*S,2*S+h);
+  ctx.lineTo(12*S+capeWave,14*S+h); ctx.lineTo(-12*S-capeWave,14*S+h); ctx.fill();
+  // Robe trim (glowing green)
+  ctx.fillStyle='#00cc66';
+  ctx.fillRect(-12*S-capeWave,12.5*S+h,(24+capeWave*2)*S,2.5*S);
+  // Robe pattern (mystical symbols)
+  ctx.fillStyle='rgba(0,255,100,0.1)';
+  ctx.font=`${6*S}px serif`; ctx.textAlign='center';
+  ctx.fillText('✦',0,9*S+h);
+
+  // --- HEAD ---
+  ctx.fillStyle='#90ee90';
+  ctx.beginPath(); ctx.arc(0,-4*S+h,8*S,0,Math.PI*2); ctx.fill();
+  // Wart
+  ctx.fillStyle='#66bb66';
+  ctx.beginPath(); ctx.arc(4*S,-1*S+h,1.5*S,0,Math.PI*2); ctx.fill();
+
+  // --- HAT (bigger, more dramatic, with stars) ---
+  // Hat body (taller)
+  ctx.fillStyle='#0a0020';
+  ctx.beginPath();
+  ctx.moveTo(-12*S,-8*S+h);
+  ctx.lineTo(-2*S,-30*S+h); // tall & bent
+  ctx.quadraticCurveTo(4*S,-28*S+h, 3*S,-22*S+h); // bent tip
+  ctx.lineTo(12*S,-8*S+h);
+  ctx.fill();
+  // Hat brim
+  ctx.fillStyle='#150a30';
+  ctx.beginPath(); ctx.ellipse(0,-7*S+h,15*S,5*S,0,0,Math.PI*2); ctx.fill();
+  // Hat band (glowing)
+  ctx.fillStyle='#00ff88';
+  ctx.fillRect(-8*S,-12*S+h,16*S,3*S);
+  // Hat buckle
+  ctx.fillStyle='#ffd700';
+  ctx.fillRect(-3*S,-12.5*S+h,6*S,3.5*S);
+  ctx.fillStyle='#0a0020';
+  ctx.fillRect(-1.5*S,-11.5*S+h,3*S,2*S);
+  // Stars on hat
+  ctx.fillStyle=`rgba(0,255,150,${0.4+Math.sin(time*0.15)*0.2})`;
+  ctx.font=`${5*S}px serif`; ctx.textAlign='center';
+  ctx.fillText('⭐',-5*S,-18*S+h);
+  ctx.fillStyle=`rgba(0,255,150,${0.3+Math.sin(time*0.2+1)*0.2})`;
+  ctx.font=`${4*S}px serif`;
+  ctx.fillText('✨',4*S,-24*S+h);
+
+  // --- EYES (bigger, glowing, menacing) ---
+  // Eye glow
+  ctx.globalAlpha=0.3;
+  ctx.fillStyle='rgba(255,255,0,0.4)';
+  ctx.beginPath(); ctx.arc(-4*S,-5*S+h,4*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4*S,-5*S+h,4*S,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  // Eyes
+  ctx.fillStyle='#ffff00';
+  ctx.beginPath(); ctx.arc(-4*S,-5*S+h,2.5*S,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4*S,-5*S+h,2.5*S,0,Math.PI*2); ctx.fill();
+  // Slit pupils
+  ctx.fillStyle='#000';
+  ctx.fillRect(-4.5*S,-7*S+h,1*S,4*S);
+  ctx.fillRect(3.5*S,-7*S+h,1*S,4*S);
+
+  // --- WICKED GRIN ---
+  ctx.strokeStyle='#004400'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(0,-1*S+h,5*S,0.1,Math.PI-0.1); ctx.stroke();
+  // Teeth
+  ctx.fillStyle='#ccffcc';
+  ctx.fillRect(-2*S,0.5*S+h,1.5*S,2*S);
+  ctx.fillRect(0.5*S,0.5*S+h,1.5*S,2*S);
+
+  // --- MAGIC ORB (left hand, floating) ---
+  const orbX=-12*S, orbY=4*S+h;
+  const orbPulse=Math.sin(time*0.18)*2;
+  // Orb glow
+  ctx.globalAlpha=0.2;
+  const oGrd=ctx.createRadialGradient(orbX,orbY,0,orbX,orbY,8*S);
+  oGrd.addColorStop(0,'rgba(0,255,100,0.5)'); oGrd.addColorStop(1,'rgba(0,255,100,0)');
+  ctx.fillStyle=oGrd; ctx.beginPath(); ctx.arc(orbX,orbY,8*S,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  // Orb
+  ctx.fillStyle=`rgba(0,${200+Math.floor(orbPulse*20)},80,0.8)`;
+  ctx.beginPath(); ctx.arc(orbX,orbY,4*S+orbPulse*0.5,0,Math.PI*2); ctx.fill();
+  // Orb shine
+  ctx.fillStyle='rgba(200,255,200,0.4)';
+  ctx.beginPath(); ctx.arc(orbX-1.5*S,orbY-1.5*S,1.5*S,0,Math.PI*2); ctx.fill();
+  // Swirling energy
+  ctx.strokeStyle=`rgba(0,255,100,${0.3+Math.sin(time*0.2)*0.2})`;
+  ctx.lineWidth=1;
+  const orbAngle=time*0.1;
+  ctx.beginPath();
+  ctx.arc(orbX,orbY,5*S,orbAngle,orbAngle+Math.PI*0.8); ctx.stroke();
+
+  ctx.restore();
+}
+
+// ===================== RENDERING — TRAILS & PARTICLES =====================
+function drawTrails() {
+  for (const t of hero.trail) {
+    const a=1-t.age/15;
+    ctx.fillStyle=`rgba(255,215,0,${a*0.3})`;
+    ctx.beginPath(); ctx.arc(t.x*CELL+CELL/2,t.y*CELL+CELL/2,CELL*0.2*a,0,Math.PI*2); ctx.fill();
+  }
+  for (const t of witch.trail) {
+    const a=1-t.age/15;
+    ctx.fillStyle=`rgba(0,200,100,${a*0.2})`;
+    ctx.beginPath(); ctx.arc(t.x*CELL+CELL/2,t.y*CELL+CELL/2,CELL*0.25*a,0,Math.PI*2); ctx.fill();
+  }
+}
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha=p.life/p.maxLife; ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*(p.life/p.maxLife),0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ===================== RENDERING — UI =====================
+function drawUI() {
+  ctx.save();
+
+  // --- TIMER (top center) ---
+  const sec=Math.ceil(gameTimer/60);
+  const timerPaused = (state===S.PRINCESS_TRAPPED);
+  const tCol = timerPaused ? '#aa88ff' : sec<=15 ? (Math.floor(time/15)%2===0?'#ff3333':'#ff8800') : '#fff';
+  ctx.font='bold 18px Georgia'; ctx.textAlign='center';
+  ctx.fillStyle=tCol; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+  const tText = timerPaused ? `⏸️ ${sec}s` : `⏱️ ${sec}s`;
+  ctx.strokeText(tText,MAP_W*CELL/2,18); ctx.fillText(tText,MAP_W*CELL/2,18);
+
+  // Timer bar
+  const barW=MAP_W*CELL-40, barPct=gameTimer/GAME_TIME;
+  ctx.fillStyle='rgba(30,15,50,0.7)'; ctx.fillRect(20,24,barW,5);
+  ctx.fillStyle=sec<=15?'#ff3333':sec<=30?'#ffaa00':'#00cc88';
+  ctx.fillRect(20,24,barW*barPct,5);
+
+  // --- HERO stats (left) ---
+  ctx.textAlign='left'; ctx.font='bold 13px Georgia';
+  // Superpower indicator
+  const pwrFlash = (heroSlowTimer>0&&heroSuperPowers>0) ? Math.sin(time*0.3)*0.4+0.6 : 1;
+  ctx.fillStyle=heroSuperPowers>0 ? `rgba(255,215,0,${pwrFlash})` : 'rgba(100,100,100,0.4)';
+  let pwrText='✨ ';
+  for (let i=0;i<MAX_SUPERPOWERS;i++) pwrText+=i<heroSuperPowers?'💎':'·';
+  ctx.fillText(pwrText,6,MAP_H*CELL-10);
+
+  // Slow indicator
+  if (heroSlowTimer>0) {
+    const slowSec=Math.ceil(heroSlowTimer/60);
+    ctx.fillStyle=heroSlowIsSuper?'#00ff88':'#ff8888';
+    ctx.font='bold 12px Georgia';
+    ctx.fillText(heroSlowIsSuper?`☠ ${slowSec}s`:`🕸️ ${slowSec}s`,6,MAP_H*CELL-28);
+  }
+
+  // --- WITCH stats (right) ---
+  ctx.textAlign='right'; ctx.font='bold 13px Georgia';
+  ctx.fillStyle='rgba(200,200,255,0.7)';
+  ctx.fillText(`🕸️ ${MAX_WEBS-witchWebCount}`,MAP_W*CELL-8,MAP_H*CELL-28);
+  ctx.fillStyle=witchSuperWebCount<MAX_SUPER_WEBS?'#00ff55':'rgba(100,100,100,0.4)';
+  let supText='☠ ';
+  for (let i=0;i<MAX_SUPER_WEBS;i++) supText+=i<(MAX_SUPER_WEBS-witchSuperWebCount)?'💀':'·';
+  ctx.fillText(supText,MAP_W*CELL-8,MAP_H*CELL-10);
+
+  ctx.restore();
+
+  // --- Story text box ---
+  if (storyText&&storyProgress>0) {
+    const displayText=storyText.substring(0,storyProgress);
+    const bx=15, bw=MAP_W*CELL-30, bh=70, by=MAP_H*CELL/2-35;
+
+    // Dimming background
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(0,0,MAP_W*CELL,MAP_H*CELL);
+
+    ctx.fillStyle='rgba(40,10,50,0.95)'; ctx.strokeStyle='#ff69b4'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,10); ctx.fill(); ctx.stroke();
+
+    ctx.font='italic 13px Georgia'; ctx.fillStyle='#ffaadd'; ctx.textAlign='center';
+    // Word wrap for narrow canvas
+    const maxW=bw-20;
+    ctx.fillText(displayText,MAP_W*CELL/2,by+22,maxW);
+
+    if (princessTimer<PRINCESS_FREEZE_TIME) {
+      ctx.fillStyle='rgba(255,170,221,0.6)'; ctx.font='11px Georgia';
+      const remaining=Math.ceil((PRINCESS_FREEZE_TIME-princessTimer)/60);
+      ctx.fillText(`The castle magic holds you... ${remaining}s`,MAP_W*CELL/2,by+42);
+      ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.font='10px Georgia';
+      ctx.fillText('Press SHIFT to fight the magic! ✨',MAP_W*CELL/2,by+58);
+    } else {
+      const pct=Math.min(1,summonTimer/SUMMON_TIME);
+      ctx.fillStyle='#00ff88'; ctx.font='bold 12px Georgia';
+      ctx.fillText(`🧙 Summoning witch: ${Math.floor(pct*100)}%`,MAP_W*CELL/2,by+48);
+    }
+    ctx.restore();
+  }
+
+  // --- Message banner ---
+  if (messageAlpha>0) {
+    ctx.save(); ctx.globalAlpha=Math.min(messageAlpha,1);
+    ctx.font='bold 14px Georgia'; ctx.textAlign='center';
+    ctx.fillStyle='#fff'; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+    ctx.strokeText(messageText,MAP_W*CELL/2,44);
+    ctx.fillText(messageText,MAP_W*CELL/2,44);
+    ctx.restore();
+    messageAlpha-=0.006;
+  }
+
+  // --- Trapped ring ---
+  if (state===S.PRINCESS_TRAPPED) {
+    ctx.save();
+    ctx.globalAlpha=0.4+Math.sin(time*0.1)*0.2;
+    ctx.strokeStyle='#ff69b4'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(hero.drawX+CELL/2,hero.drawY+CELL/2,CELL*0.6,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ===================== TITLE SCREEN =====================
+function drawTitle() {
+  ctx.fillStyle='#07000f'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  for (let i=0;i<50;i++) {
+    const x=(Math.sin(time*0.01+i*1.5)*0.5+0.5)*canvas.width;
+    const y=(Math.cos(time*0.008+i*2.1)*0.5+0.5)*canvas.height;
+    const a=Math.sin(time*0.03+i)*0.3+0.3;
+    ctx.fillStyle=['rgba(100,50,180,A)','rgba(255,100,200,A)','rgba(0,200,100,A)'][i%3].replace('A',a);
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fill();
+  }
+  const cx=canvas.width/2, cy=canvas.height/2;
+  ctx.save();
+  ctx.globalAlpha=0.5+Math.sin(time*0.05)*0.2;
+  const grd=ctx.createRadialGradient(cx,cy-50,0,cx,cy-50,200);
+  grd.addColorStop(0,'rgba(150,50,200,0.3)'); grd.addColorStop(1,'rgba(150,50,200,0)');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.restore();
+
+  ctx.save(); ctx.textAlign='center';
+  ctx.font='bold 32px Georgia'; ctx.fillStyle='#cc77ff';
+  ctx.strokeStyle='#2a0060'; ctx.lineWidth=4;
+  ctx.strokeText("PETRA'S GAME",cx,cy-60); ctx.fillText("PETRA'S GAME",cx,cy-60);
+  ctx.font='italic 18px Georgia'; ctx.fillStyle='#ff99cc';
+  ctx.fillText('Witches & Princesses',cx,cy-30);
+  ctx.font='50px serif'; ctx.fillText('🧙‍♀️  👸',cx,cy+25);
+  ctx.strokeStyle='rgba(200,100,255,0.3)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(cx-120,cy+48); ctx.lineTo(cx+120,cy+48); ctx.stroke();
+  ctx.font='14px Georgia';
+  ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+  ctx.fillText('Press SPACE to start',cx,cy+72);
+  ctx.font='11px Georgia'; ctx.fillStyle='rgba(150,130,200,0.5)';
+  ctx.fillText('Designed by Petra ✨',cx,cy+100);
+  ctx.restore();
+}
+
+// ===================== INSTRUCTIONS — VISUAL WITH KEY ICONS =====================
+function drawKeyIcon(x,y,w,h,label,color,bg) {
+  ctx.fillStyle=bg||'rgba(40,20,60,0.8)';
+  ctx.strokeStyle=color; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,5); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=color; ctx.font='bold 12px Georgia'; ctx.textAlign='center';
+  ctx.fillText(label,x+w/2,y+h/2+5);
+}
+
+function drawInstructions() {
+  ctx.fillStyle='#07000f'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const cx=canvas.width/2;
+  let y=30;
+  ctx.save(); ctx.textAlign='center';
+
+  ctx.font='bold 22px Georgia'; ctx.fillStyle='#cc77ff';
+  ctx.fillText('How to Play',cx,y); y+=38;
+
+  // === PRINCESS ===
+  ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
+  ctx.fillText('👑 Princess',cx,y); y+=6;
+  ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+  ctx.fillText('"I want to go home!"',cx,y+14); y+=32;
+
+  // Arrow key icons
+  const kx=cx-55, ky=y;
+  drawKeyIcon(kx+20,ky,30,24,'↑','#ffd700');
+  drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
+  drawKeyIcon(kx+20,ky+28,30,24,'↓','#ffd700');
+  drawKeyIcon(kx+40,ky+28,30,24,'→','#ffd700');
+  ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+  ctx.fillText('Move',kx+80,ky+22);
+  // SHIFT key
+  drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
+  ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
+  ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
+  ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
+  ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
+  y+=110;
+
+  // === WITCH ===
+  ctx.textAlign='center';
+  ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+  ctx.fillText('🧙 Witch',cx,y); y+=6;
+  ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+  ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=32;
+
+  const wx=cx-55, wy=y;
+  drawKeyIcon(wx+20,wy,30,24,'W','#00ff88');
+  drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
+  drawKeyIcon(wx+20,wy+28,30,24,'S','#00ff88');
+  drawKeyIcon(wx+40,wy+28,30,24,'D','#00ff88');
+  ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+  ctx.fillText('Move',wx+80,wy+22);
+
+  drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
+  ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
+  ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
+
+  drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
+  ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
+  ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
+  y+=128;
+
+  // === TIMER ===
+  ctx.textAlign='center';
+  ctx.font='bold 14px Georgia'; ctx.fillStyle='#ff8800';
+  ctx.fillText(`⏱️ You have ${GAME_TIME/60} seconds!`,cx,y);
+  y+=30;
+
+  ctx.font='14px Georgia';
+  ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+  ctx.fillText('Press SPACE',cx,y);
+  ctx.restore();
+}
+
+// ===================== STORY INTRO =====================
+function drawStoryIntro() {
+  ctx.fillStyle='#07000f'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Ambient particles
+  for (let i=0;i<30;i++) {
+    const x=(Math.sin(time*0.008+i*2)*0.5+0.5)*canvas.width;
+    const y=(Math.cos(time*0.006+i*2.7)*0.5+0.5)*canvas.height;
+    const a=Math.sin(time*0.04+i)*0.2+0.2;
+    ctx.fillStyle=`rgba(150,80,220,${a})`;
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2); ctx.fill();
+  }
+
+  const cx=canvas.width/2, cy=canvas.height/2;
+  ctx.save(); ctx.textAlign='center';
+
+  // Story text with dramatic reveal
+  const lines = [
+    {text:'The princess has been lost',color:'#ffaadd',size:16,dy:-60},
+    {text:'in the Witch\'s dark world...',color:'#cc77ff',size:16,dy:-35},
+    {text:'🕷️ 🏰 🕸️',color:'#fff',size:24,dy:5},
+    {text:'She must escape the scary labyrinth',color:'#ddc',size:13,dy:40},
+    {text:'and find her way back HOME!',color:'#ffd700',size:15,dy:62},
+    {text:'⭐',color:'#ffd700',size:28,dy:90},
+  ];
+
+  for (const l of lines) {
+    ctx.font=`${l.size}px Georgia`; ctx.fillStyle=l.color;
+    ctx.fillText(l.text,cx,cy+l.dy);
+  }
+
+  ctx.font='13px Georgia';
+  ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+  ctx.fillText('Press SPACE to enter the labyrinth...',cx,cy+130);
+  ctx.restore();
+}
+
+// ===================== END SCREEN =====================
+function drawEndScreen() {
+  endTimer++;
+  ctx.fillStyle='rgba(7,0,15,0.04)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const cx=canvas.width/2, cy=canvas.height/2;
+
+  if (endTimer%4===0) {
+    const colors = state===S.HERO_WINS
+      ? ['rgba(255,215,0,0.8)','rgba(255,100,200,0.8)','rgba(255,255,255,0.8)']
+      : ['rgba(100,200,100,0.5)','rgba(200,200,255,0.5)','rgba(255,150,50,0.5)'];
+    spawnParticle(rand(0,canvas.width),rand(0,canvas.height),
+      colors[randInt(0,colors.length-1)],50,rand(-2,2),rand(-3,-0.5),rand(2,6));
+  }
+  drawParticles(); updateParticles();
+  if (endTimer<30) return;
+
+  ctx.save(); ctx.textAlign='center';
+
+  if (state===S.HERO_WINS) {
+    ctx.globalAlpha=0.3;
+    const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,200);
+    grd.addColorStop(0,'rgba(255,215,0,0.3)'); grd.addColorStop(1,'rgba(255,215,0,0)');
+    ctx.fillStyle=grd; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalAlpha=1;
+    ctx.font='bold 28px Georgia'; ctx.fillStyle='#ffd700';
+    ctx.strokeStyle='#000'; ctx.lineWidth=4;
+    ctx.strokeText('👑 PRINCESS WINS! 👑',cx,cy-40);
+    ctx.fillText('👑 PRINCESS WINS! 👑',cx,cy-40);
+    ctx.font='15px Georgia'; ctx.fillStyle='#ffaadd';
+    ctx.fillText('She made it home! ⭐',cx,cy+5);
+  } else {
+    ctx.font='bold 28px Georgia'; ctx.fillStyle='#ff8800';
+    ctx.strokeStyle='#000'; ctx.lineWidth=4;
+    ctx.strokeText('⏰ WITCH WINS! ⏰',cx,cy-40);
+    ctx.fillText('⏰ WITCH WINS! ⏰',cx,cy-40);
+    ctx.font='15px Georgia'; ctx.fillStyle='#ffcc88';
+    ctx.fillText('Time ran out! Try again!',cx,cy+5);
+  }
+
+  if (endTimer>90) {
+    ctx.font='14px Georgia';
+    ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+    ctx.fillText('Press SPACE to play again',cx,cy+55);
+  }
+  ctx.restore();
+}
+
+// ===================== SCREEN SHAKE =====================
+function applyShake() {
+  if (shakeAmount>0) {
+    ctx.translate((Math.random()-0.5)*shakeAmount,(Math.random()-0.5)*shakeAmount);
+    shakeAmount*=0.9; if (shakeAmount<0.5) shakeAmount=0;
+  }
+}
+
+// ===================== MAIN LOOP =====================
+function update() {
+  time++;
+  if (webCooldown>0) webCooldown--;
+  if (superWebCooldown>0) superWebCooldown--;
+  if (superPowerCooldown>0) superPowerCooldown--;
+
+  if (state===S.PLAYING||state===S.HERO_FREED) {
+    // Labyrinth entry message
+    if (!introShown) {
+      introShown=true;
+      messageText='🕷️ You have entered the Witch\'s Labyrinth!';
+      messageAlpha=1.5;
+      sfxLabyrinthEntry();
+    }
+    updateTimer(); updateSlowTimer(); updateSuperWebWarning();
+    handleMovement(); checkCollisions();
+    if (state===S.PLAYING||state===S.HERO_FREED) {
+      updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
+    }
+  } else if (state===S.PRINCESS_TRAPPED) {
+    // Timer PAUSED during castle phase!
+    updateSlowTimer();
+    handleInput(witchKeys,witch,false);
+    handleWebPlacement();
+    updatePrincessState();
+    updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
+  }
+}
+
+function render() {
+  ctx.save();
+  if (state===S.TITLE) drawTitle();
+  else if (state===S.INSTRUCTIONS) drawInstructions();
+  else if (state===S.STORY_INTRO) drawStoryIntro();
+  else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) drawEndScreen();
+  else {
+    applyShake(); drawMap(); drawCastleDecorations(); drawRealWorldDecorations(); drawTrails();
+    for (const w of webs) { w.age++; drawWeb(w); }
+    drawParticles();
+    drawHero(hero.drawX,hero.drawY);
+    drawWitch(witch.drawX,witch.drawY);
+    drawUI();
+  }
+  ctx.restore();
+}
+
+function gameLoop() { update(); render(); requestAnimationFrame(gameLoop); }
+
+// ===================== START =====================
+resizeCanvas();
+gameLoop();
+
+</script>
+</body>
+</html>
