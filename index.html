@@ -22,7 +22,7 @@ body {
 }
 body.touch-active {
   justify-content: flex-start;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 canvas {
   display: block;
@@ -239,14 +239,18 @@ let castleFightPresses = 0;
 function resizeCanvas() {
   canvas.width = MAP_W * CELL;
   canvas.height = MAP_H * CELL;
-  const controlsH = isTouchDevice ? 175 : 0;
-  const sx = (window.innerWidth - 16) / canvas.width;
-  const sy = ((window.innerHeight || document.documentElement.clientHeight) - 16 - controlsH) / canvas.height;
-  const scale = Math.min(sx, sy, 2.5);
+  // Only subtract controls height when they're actually visible
+  const controlsVisible = isTouchDevice && touchControls.classList.contains('visible');
+  const controlsH = controlsVisible ? (touchControls.offsetHeight || 160) : 0;
+  const pad = isTouchDevice ? 8 : 16;
+  const sx = (window.innerWidth - pad) / canvas.width;
+  const sy = ((window.visualViewport?.height || window.innerHeight) - pad - controlsH) / canvas.height;
+  const scale = Math.min(sx, sy, 3.5);
   canvas.style.width = Math.floor(canvas.width * scale) + 'px';
   canvas.style.height = Math.floor(canvas.height * scale) + 'px';
 }
 window.addEventListener('resize', resizeCanvas);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 
 // ===================== UTILITIES =====================
 function rand(a,b) { return Math.random()*(b-a)+a; }
@@ -420,6 +424,7 @@ function advanceFlow() {
   else if (state===S.INSTRUCTIONS) state=S.STORY_INTRO;
   else if (state===S.STORY_INTRO) { state=S.PLAYING; initGame(); introShown=false; }
   else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) state=S.TITLE;
+  resizeCanvas(); // re-fit canvas for new state
 }
 
 // ===================== KEYBOARD INPUT =====================
@@ -528,6 +533,7 @@ window.addEventListener('blur', clearAllTouchInputs);
 document.addEventListener('visibilitychange', () => { if (document.hidden) clearAllTouchInputs(); });
 
 // Show/hide touch controls based on state
+let _lastControlsVisible = false;
 function updateTouchControlsVisibility() {
   if (!isTouchDevice) return;
   const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED);
@@ -536,6 +542,10 @@ function updateTouchControlsVisibility() {
     tcWitch.style.display = gameMode === '2p' ? 'flex' : 'none';
   } else {
     touchControls.classList.remove('visible');
+  }
+  if (showControls !== _lastControlsVisible) {
+    _lastControlsVisible = showControls;
+    resizeCanvas();
   }
 }
 
