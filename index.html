@@ -1999,21 +1999,21 @@ function aiMoveBFS() {
   }
 }
 
-function aiPlaceWeb(webChance, superChance) {
+function aiPlaceWeb(webChance, superChance, maxDist) {
   aiWebTimer--;
   if (aiWebTimer > 0) return;
 
   const dist = Math.abs(witch.x-hero.x) + Math.abs(witch.y-hero.y);
-  if (dist > 6) { aiWebTimer = 30; return; } // too far
+  if (dist > maxDist) { aiWebTimer = 15; return; }
 
   if (Math.random() < superChance && witchSuperWebCount < MAX_SUPER_WEBS) {
     inputState.ai['KeyQ'] = true;
-    aiWebTimer = randInt(180, 360);
+    aiWebTimer = randInt(90, 180);
   } else if (Math.random() < webChance && witchWebCount < MAX_WEBS) {
     inputState.ai['KeyE'] = true;
-    aiWebTimer = randInt(60, 150);
+    aiWebTimer = randInt(30, 90);
   } else {
-    aiWebTimer = 30;
+    aiWebTimer = 15;
   }
 }
 
@@ -2025,16 +2025,16 @@ function updateAI() {
 
   switch (aiDifficulty) {
     case 'easy':
-      if (aiTimer % 2 === 0) aiMoveRandom(); // slower movement
-      aiPlaceWeb(0.08, 0);  // rare webs, no super
+      if (aiTimer % 2 === 0) aiMoveRandom();
+      aiPlaceWeb(0.4, 0, 12);
       break;
     case 'medium':
-      aiMoveToward(0.3);  // 30% confusion
-      aiPlaceWeb(0.15, 0.03);  // moderate webs, rare super
+      aiMoveToward(0.25);
+      aiPlaceWeb(0.5, 0.12, 20);
       break;
     case 'hard':
-      aiMoveBFS();  // pathfinding
-      aiPlaceWeb(0.2, 0.08);  // frequent webs + supers
+      aiMoveBFS();
+      aiPlaceWeb(0.7, 0.25, 99);
       break;
   }
 }
