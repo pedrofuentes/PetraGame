@@ -2,35 +2,151 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Petra's Game — Witches & Princesses</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   background: #07000f;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   font-family: 'Georgia', 'Times New Roman', serif;
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+body.touch-active {
+  justify-content: flex-start;
+  padding-top: 8px;
 }
 canvas {
   display: block;
   border: 2px solid #2a1050;
   border-radius: 6px;
   box-shadow: 0 0 40px rgba(100,0,200,0.3), 0 0 80px rgba(100,0,200,0.1);
+  touch-action: none;
+}
+/* ── Touch Controls ── */
+#touch-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 10;
+  pointer-events: none;
+}
+#touch-controls.visible { display: flex; }
+.tc-side {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: auto;
+}
+.tc-left { flex-direction: row; }
+.tc-right { flex-direction: row-reverse; }
+.tc-dpad {
+  display: grid;
+  grid-template: repeat(3, 50px) / repeat(3, 50px);
+  gap: 3px;
+}
+.tc-dpad-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(100, 50, 180, 0.45);
+  border: 2px solid rgba(200, 150, 255, 0.35);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 22px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+.tc-dpad-btn.active {
+  background: rgba(150, 80, 255, 0.75);
+  border-color: rgba(255, 200, 255, 0.8);
+}
+.tc-up { grid-column: 2; grid-row: 1; }
+.tc-left-dir { grid-column: 1; grid-row: 2; }
+.tc-right-dir { grid-column: 3; grid-row: 2; }
+.tc-down { grid-column: 2; grid-row: 3; }
+.tc-action {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+.tc-action.active { transform: scale(0.9); }
+.tc-blast {
+  background: rgba(255, 200, 0, 0.4);
+  border: 3px solid rgba(255, 215, 0, 0.55);
+}
+.tc-blast.active { background: rgba(255, 200, 0, 0.7); }
+.tc-web {
+  background: rgba(180, 180, 255, 0.35);
+  border: 3px solid rgba(200, 200, 255, 0.5);
+}
+.tc-web.active { background: rgba(180, 180, 255, 0.65); }
+.tc-superweb {
+  background: rgba(0, 255, 100, 0.35);
+  border: 3px solid rgba(0, 255, 100, 0.5);
+}
+.tc-superweb.active { background: rgba(0, 255, 100, 0.65); }
+.tc-actions-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="touch-controls">
+  <div id="tc-princess" class="tc-side tc-left">
+    <div class="tc-dpad" id="dpad-princess">
+      <div class="tc-dpad-btn tc-up" data-key="ArrowUp">▲</div>
+      <div class="tc-dpad-btn tc-left-dir" data-key="ArrowLeft">◀</div>
+      <div class="tc-dpad-btn tc-right-dir" data-key="ArrowRight">▶</div>
+      <div class="tc-dpad-btn tc-down" data-key="ArrowDown">▼</div>
+    </div>
+    <div class="tc-action tc-blast" id="btn-blast" data-key="ShiftLeft">✨</div>
+  </div>
+  <div id="tc-witch" class="tc-side tc-right" style="display:none;">
+    <div class="tc-actions-col">
+      <div class="tc-action tc-web" id="btn-web" data-key="KeyE">🕸️</div>
+      <div class="tc-action tc-superweb" id="btn-super" data-key="KeyQ">☠</div>
+    </div>
+    <div class="tc-dpad" id="dpad-witch">
+      <div class="tc-dpad-btn tc-up" data-key="KeyW">▲</div>
+      <div class="tc-dpad-btn tc-left-dir" data-key="KeyA">◀</div>
+      <div class="tc-dpad-btn tc-right-dir" data-key="KeyD">▶</div>
+      <div class="tc-dpad-btn tc-down" data-key="KeyS">▼</div>
+    </div>
+  </div>
+</div>
 <script>
 // ================================================================
-//  PETRA'S GAME — Witches & Princesses  (v3)
+//  PETRA'S GAME — Witches & Princesses  (v4)
 //  Designed by Petra (age 6) — Built with love
-//  Superpowers, Super Webs, Timer & Story!
+//  Superpowers, Super Webs, Timer, Story & Tablet Touch Controls!
 // ================================================================
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -77,7 +193,33 @@ let hero, witch, webs, particles;
 let webCooldown = 0, superWebCooldown = 0;
 let princessTimer = 0, summonTimer = 0;
 let moveTimers = { hero: 0, witch: 0 };
-let keys = {};
+// ===================== INPUT SYSTEM =====================
+// Separate sources → merged via Proxy to prevent state bugs
+const inputState = { keyboard: {}, touch: {}, ai: {} };
+const keys = new Proxy({}, {
+  get(_, prop) {
+    if (typeof prop === 'symbol') return undefined;
+    return !!(inputState.keyboard[prop] || inputState.touch[prop] || inputState.ai[prop]);
+  },
+  set(_, prop, value) {
+    if (typeof prop === 'symbol') return true;
+    if (!value) {
+      inputState.keyboard[prop] = false;
+      inputState.touch[prop] = false;
+      inputState.ai[prop] = false;
+    }
+    return true;
+  }
+});
+
+// ===================== TOUCH & MODE DETECTION =====================
+const isTouchDevice = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
+let gameMode = isTouchDevice ? '1p' : '2p';  // default 1p on touch
+let aiDifficulty = 'easy';  // 'easy', 'medium', 'hard'
+const touchControls = document.getElementById('touch-controls');
+const tcPrincess = document.getElementById('tc-princess');
+const tcWitch = document.getElementById('tc-witch');
+const activeTouches = new Map(); // touchId → { element, key }
 let time = 0;
 let gameTimer = GAME_TIME;
 let shakeAmount = 0;
@@ -97,8 +239,9 @@ let castleFightPresses = 0;
 function resizeCanvas() {
   canvas.width = MAP_W * CELL;
   canvas.height = MAP_H * CELL;
+  const controlsH = isTouchDevice ? 175 : 0;
   const sx = (window.innerWidth - 16) / canvas.width;
-  const sy = (window.innerHeight - 16) / canvas.height;
+  const sy = ((window.innerHeight || document.documentElement.clientHeight) - 16 - controlsH) / canvas.height;
   const scale = Math.min(sx, sy, 2.5);
   canvas.style.width = Math.floor(canvas.width * scale) + 'px';
   canvas.style.height = Math.floor(canvas.height * scale) + 'px';
@@ -264,22 +407,140 @@ function initGame() {
   messageText=''; messageAlpha=0;
   shakeAmount=0; gameTimer=GAME_TIME;
   castleFightPresses=0;
+  // Reset AI state
+  aiTimer=0; aiPath=[]; aiWebTimer=0; aiDecisionTimer=0; aiCurrentDir=null;
+  clearAiInputs();
   generateMaze();
 }
 
-// ===================== INPUT =====================
+// ===================== SHARED STATE TRANSITIONS =====================
+function advanceFlow() {
+  initAudio();
+  if (state===S.TITLE) state=S.INSTRUCTIONS;
+  else if (state===S.INSTRUCTIONS) state=S.STORY_INTRO;
+  else if (state===S.STORY_INTRO) { state=S.PLAYING; initGame(); introShown=false; }
+  else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) state=S.TITLE;
+}
+
+// ===================== KEYBOARD INPUT =====================
 window.addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (e.code === 'Space') {
-    e.preventDefault();
-    initAudio();
-    if (state===S.TITLE) state=S.INSTRUCTIONS;
-    else if (state===S.INSTRUCTIONS) state=S.STORY_INTRO;
-    else if (state===S.STORY_INTRO) { state=S.PLAYING; initGame(); introShown=false; }
-    else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) state=S.TITLE;
-  }
+  inputState.keyboard[e.code] = true;
+  if (e.code === 'Space') { e.preventDefault(); advanceFlow(); }
 });
-window.addEventListener('keyup', e => { keys[e.code]=false; });
+window.addEventListener('keyup', e => { inputState.keyboard[e.code]=false; });
+
+// ===================== CANVAS TAP (for menus on touch) =====================
+function getCanvasTapPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.changedTouches ? e.changedTouches[0] : e;
+  const x = (touch.clientX - rect.left) / rect.width * canvas.width;
+  const y = (touch.clientY - rect.top) / rect.height * canvas.height;
+  return { x, y };
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const pos = getCanvasTapPos(e);
+
+  // Title screen: handle mode & difficulty buttons
+  if (state === S.TITLE) {
+    const cx = canvas.width / 2;
+    // Mode buttons: 1P and 2P
+    const modeY = canvas.height / 2 + 95;
+    if (isTouchDevice) {
+      if (pos.y >= modeY - 14 && pos.y <= modeY + 14) {
+        if (pos.x >= cx - 120 && pos.x < cx) { gameMode = '1p'; return; }
+        if (pos.x >= cx && pos.x <= cx + 120) { gameMode = '2p'; return; }
+      }
+      // Difficulty buttons (only in 1p mode)
+      if (gameMode === '1p') {
+        const diffY = modeY + 32;
+        if (pos.y >= diffY - 12 && pos.y <= diffY + 12) {
+          const bw = 70, gap = 8, totalW = bw * 3 + gap * 2;
+          const startX = cx - totalW / 2;
+          if (pos.x >= startX && pos.x < startX + bw) { aiDifficulty = 'easy'; return; }
+          if (pos.x >= startX + bw + gap && pos.x < startX + bw * 2 + gap) { aiDifficulty = 'medium'; return; }
+          if (pos.x >= startX + bw * 2 + gap * 2 && pos.x < startX + bw * 3 + gap * 2) { aiDifficulty = 'hard'; return; }
+        }
+      }
+    }
+    advanceFlow();
+    return;
+  }
+
+  if (state===S.INSTRUCTIONS||state===S.STORY_INTRO||state===S.HERO_WINS||state===S.WITCH_WINS_TIME) {
+    advanceFlow();
+  }
+}, { passive: false });
+
+// ===================== TOUCH CONTROLS =====================
+function setupTouchControl(el) {
+  const key = el.dataset.key;
+  if (!key) return;
+
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    initAudio();
+    for (const touch of e.changedTouches) {
+      activeTouches.set(touch.identifier, { element: el, key });
+      inputState.touch[key] = true;
+      el.classList.add('active');
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+      const info = activeTouches.get(touch.identifier);
+      if (info) {
+        inputState.touch[info.key] = false;
+        info.element.classList.remove('active');
+        activeTouches.delete(touch.identifier);
+      }
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchcancel', e => {
+    for (const touch of e.changedTouches) {
+      const info = activeTouches.get(touch.identifier);
+      if (info) {
+        inputState.touch[info.key] = false;
+        info.element.classList.remove('active');
+        activeTouches.delete(touch.identifier);
+      }
+    }
+  });
+}
+
+// Bind all touch-control elements
+document.querySelectorAll('[data-key]').forEach(setupTouchControl);
+
+// Cleanup on focus/visibility loss
+function clearAllTouchInputs() {
+  for (const [id, info] of activeTouches) {
+    inputState.touch[info.key] = false;
+    info.element.classList.remove('active');
+  }
+  activeTouches.clear();
+}
+window.addEventListener('blur', clearAllTouchInputs);
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearAllTouchInputs(); });
+
+// Show/hide touch controls based on state
+function updateTouchControlsVisibility() {
+  if (!isTouchDevice) return;
+  const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED);
+  if (showControls) {
+    touchControls.classList.add('visible');
+    tcWitch.style.display = gameMode === '2p' ? 'flex' : 'none';
+  } else {
+    touchControls.classList.remove('visible');
+  }
+}
+
+// ===================== TOUCH CANVAS SIZING =====================
+if (isTouchDevice) document.body.classList.add('touch-active');
 
 // ===================== MOVEMENT =====================
 function canMove(x,y,isHero) {
@@ -381,14 +642,14 @@ function checkCollisions() {
         heroSlowTimer = SUPER_WEB_SLOW_TIME;
         heroSlowIsSuper = true;
         sfxTrapped(); shakeAmount=12;
-        messageText='☠ SUPER WEB! Stuck for 4 seconds! Use SHIFT!';
+        messageText=isTouchDevice ? '☠ SUPER WEB! Stuck 4s! Tap ✨!' : '☠ SUPER WEB! Stuck for 4 seconds! Use SHIFT!';
         messageAlpha=1;
         spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(0,255,100,0.9)',25,4,50,5);
       } else {
         heroSlowTimer = WEB_SLOW_TIME;
         heroSlowIsSuper = false;
         sfxSlowed(); shakeAmount=4;
-        messageText='🕸️ Stuck! Wait or use SHIFT!';
+        messageText=isTouchDevice ? '🕸️ Stuck! Wait or tap ✨!' : '🕸️ Stuck! Wait or use SHIFT!';
         messageAlpha=1;
         spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(200,200,255,0.8)',12,2,30,3);
       }
@@ -1271,7 +1532,7 @@ function drawUI() {
       const remaining=Math.ceil((PRINCESS_FREEZE_TIME-princessTimer)/60);
       ctx.fillText(`The castle magic holds you... ${remaining}s`,MAP_W*CELL/2,by+42);
       ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.font='10px Georgia';
-      ctx.fillText('Press SHIFT to fight the magic! ✨',MAP_W*CELL/2,by+58);
+      ctx.fillText(isTouchDevice ? 'Tap ✨ to fight the magic!' : 'Press SHIFT to fight the magic! ✨',MAP_W*CELL/2,by+58);
     } else {
       const pct=Math.min(1,summonTimer/SUMMON_TIME);
       ctx.fillStyle='#00ff88'; ctx.font='bold 12px Georgia';
@@ -1328,11 +1589,61 @@ function drawTitle() {
   ctx.font='50px serif'; ctx.fillText('🧙‍♀️  👸',cx,cy+25);
   ctx.strokeStyle='rgba(200,100,255,0.3)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(cx-120,cy+48); ctx.lineTo(cx+120,cy+48); ctx.stroke();
-  ctx.font='14px Georgia';
-  ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-  ctx.fillText('Press SPACE to start',cx,cy+72);
+
+  if (isTouchDevice) {
+    // Mode selection buttons
+    const modeY = cy + 95;
+    ctx.font='bold 14px Georgia';
+    // 1 Player button
+    const is1P = gameMode === '1p';
+    ctx.fillStyle = is1P ? 'rgba(255,215,0,0.25)' : 'rgba(40,20,60,0.6)';
+    ctx.strokeStyle = is1P ? '#ffd700' : 'rgba(200,150,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(cx-120, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = is1P ? '#ffd700' : 'rgba(200,180,255,0.6)';
+    ctx.fillText('👤 1 Player', cx-62, modeY+5);
+    // 2 Players button
+    const is2P = gameMode === '2p';
+    ctx.fillStyle = is2P ? 'rgba(0,255,100,0.2)' : 'rgba(40,20,60,0.6)';
+    ctx.strokeStyle = is2P ? '#00ff88' : 'rgba(200,150,255,0.3)';
+    ctx.beginPath(); ctx.roundRect(cx+5, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = is2P ? '#00ff88' : 'rgba(200,180,255,0.6)';
+    ctx.fillText('👥 2 Players', cx+62, modeY+5);
+
+    // Difficulty selection (only in 1P)
+    if (gameMode === '1p') {
+      const diffY = modeY + 32;
+      ctx.font='12px Georgia';
+      const diffs = [
+        {id:'easy', label:'🌸 Easy', col:'#88ff88'},
+        {id:'medium', label:'⚔️ Medium', col:'#ffaa44'},
+        {id:'hard', label:'🔥 Hard', col:'#ff5555'}
+      ];
+      const bw=70, gap=8, totalW=bw*3+gap*2;
+      const startX=cx-totalW/2;
+      for (let i=0;i<3;i++) {
+        const d=diffs[i], bx=startX+i*(bw+gap);
+        const sel = aiDifficulty===d.id;
+        ctx.fillStyle = sel ? 'rgba(255,255,255,0.12)' : 'rgba(20,10,30,0.5)';
+        ctx.strokeStyle = sel ? d.col : 'rgba(150,130,200,0.3)';
+        ctx.lineWidth = sel ? 2 : 1;
+        ctx.beginPath(); ctx.roundRect(bx, diffY-12, bw, 24, 6); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = sel ? d.col : 'rgba(200,180,255,0.5)';
+        ctx.fillText(d.label, bx+bw/2, diffY+4);
+      }
+    }
+
+    ctx.font='14px Georgia';
+    ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+    ctx.fillText('Tap to start',cx,cy+155);
+  } else {
+    ctx.font='14px Georgia';
+    ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+    ctx.fillText('Press SPACE to start',cx,cy+72);
+  }
+
   ctx.font='11px Georgia'; ctx.fillStyle='rgba(150,130,200,0.5)';
-  ctx.fillText('Designed by Petra ✨',cx,cy+100);
+  ctx.fillText('Designed by Petra ✨',cx, isTouchDevice ? cy+175 : cy+100);
   ctx.restore();
 }
 
@@ -1354,51 +1665,112 @@ function drawInstructions() {
   ctx.font='bold 22px Georgia'; ctx.fillStyle='#cc77ff';
   ctx.fillText('How to Play',cx,y); y+=38;
 
-  // === PRINCESS ===
-  ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
-  ctx.fillText('👑 Princess',cx,y); y+=6;
-  ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-  ctx.fillText('"I want to go home!"',cx,y+14); y+=32;
+  if (isTouchDevice) {
+    // === TOUCH INSTRUCTIONS ===
+    ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
+    ctx.fillText('👑 Princess',cx,y); y+=6;
+    ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+    ctx.fillText('"I want to go home!"',cx,y+14); y+=34;
 
-  // Arrow key icons
-  const kx=cx-55, ky=y;
-  drawKeyIcon(kx+20,ky,30,24,'↑','#ffd700');
-  drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
-  drawKeyIcon(kx+20,ky+28,30,24,'↓','#ffd700');
-  drawKeyIcon(kx+40,ky+28,30,24,'→','#ffd700');
-  ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
-  ctx.fillText('Move',kx+80,ky+22);
-  // SHIFT key
-  drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
-  ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
-  ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
-  ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
-  ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
-  y+=110;
+    // D-pad visual
+    ctx.font='11px Georgia'; ctx.textAlign='left';
+    const dx=cx-55;
+    drawKeyIcon(dx+20,y,30,24,'▲','#ffd700');
+    drawKeyIcon(dx,y+28,30,24,'◀','#ffd700');
+    drawKeyIcon(dx+20,y+28,30,24,'▼','#ffd700');
+    drawKeyIcon(dx+40,y+28,30,24,'▶','#ffd700');
+    ctx.fillStyle='#ddc'; ctx.fillText('D-Pad (left side)',dx+80,y+22);
 
-  // === WITCH ===
-  ctx.textAlign='center';
-  ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
-  ctx.fillText('🧙 Witch',cx,y); y+=6;
-  ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-  ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=32;
+    // Blast button visual
+    drawKeyIcon(dx+5,y+62,50,30,'✨','#ffd700');
+    ctx.fillStyle='#ffa'; ctx.fillText('✨ Magic Blast!',dx+65,y+78);
+    ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
+    ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,dx+65,y+92);
+    y+=110;
 
-  const wx=cx-55, wy=y;
-  drawKeyIcon(wx+20,wy,30,24,'W','#00ff88');
-  drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
-  drawKeyIcon(wx+20,wy+28,30,24,'S','#00ff88');
-  drawKeyIcon(wx+40,wy+28,30,24,'D','#00ff88');
-  ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
-  ctx.fillText('Move',wx+80,wy+22);
+    if (gameMode === '2p') {
+      // === WITCH (2P touch) ===
+      ctx.textAlign='center';
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch (Player 2)',cx,y); y+=6;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=34;
 
-  drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
-  ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
-  ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
+      const wx=cx-55;
+      ctx.textAlign='left';
+      drawKeyIcon(wx+20,y,30,24,'▲','#00ff88');
+      drawKeyIcon(wx,y+28,30,24,'◀','#00ff88');
+      drawKeyIcon(wx+20,y+28,30,24,'▼','#00ff88');
+      drawKeyIcon(wx+40,y+28,30,24,'▶','#00ff88');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia';
+      ctx.fillText('D-Pad (right side)',wx+80,y+22);
 
-  drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
-  ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
-  ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
-  y+=128;
+      drawKeyIcon(wx,y+62,30,24,'🕸️','#aaaaff');
+      ctx.fillStyle='#ccccff'; ctx.font='11px Georgia';
+      ctx.fillText(`Web (×${MAX_WEBS})`,wx+40,y+78);
+
+      drawKeyIcon(wx,y+92,30,24,'☠','#00ff55');
+      ctx.fillStyle='#00ff55';
+      ctx.fillText(`SUPER (×${MAX_SUPER_WEBS})`,wx+40,y+108);
+      y+=128;
+    } else {
+      // 1P: AI witch info
+      ctx.textAlign='center';
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch (AI)',cx,y); y+=22;
+      ctx.font='12px Georgia'; ctx.fillStyle='#ddc';
+      const diffLabel = aiDifficulty==='easy' ? '🌸 Easy' : aiDifficulty==='medium' ? '⚔️ Medium' : '🔥 Hard';
+      ctx.fillText(`Difficulty: ${diffLabel}`,cx,y); y+=20;
+      ctx.font='11px Georgia'; ctx.fillStyle='rgba(200,180,255,0.6)';
+      ctx.fillText('The witch moves on her own!',cx,y);
+      y+=40;
+    }
+  } else {
+    // === KEYBOARD INSTRUCTIONS (original) ===
+    // === PRINCESS ===
+    ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
+    ctx.fillText('👑 Princess',cx,y); y+=6;
+    ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+    ctx.fillText('"I want to go home!"',cx,y+14); y+=32;
+
+    const kx=cx-55, ky=y;
+    drawKeyIcon(kx+20,ky,30,24,'↑','#ffd700');
+    drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
+    drawKeyIcon(kx+20,ky+28,30,24,'↓','#ffd700');
+    drawKeyIcon(kx+40,ky+28,30,24,'→','#ffd700');
+    ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+    ctx.fillText('Move',kx+80,ky+22);
+    drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
+    ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
+    ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
+    ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
+    ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
+    y+=110;
+
+    // === WITCH ===
+    ctx.textAlign='center';
+    ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+    ctx.fillText('🧙 Witch',cx,y); y+=6;
+    ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+    ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=32;
+
+    const wx=cx-55, wy=y;
+    drawKeyIcon(wx+20,wy,30,24,'W','#00ff88');
+    drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
+    drawKeyIcon(wx+20,wy+28,30,24,'S','#00ff88');
+    drawKeyIcon(wx+40,wy+28,30,24,'D','#00ff88');
+    ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+    ctx.fillText('Move',wx+80,wy+22);
+
+    drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
+    ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
+    ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
+
+    drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
+    ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
+    ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
+    y+=128;
+  }
 
   // === TIMER ===
   ctx.textAlign='center';
@@ -1408,7 +1780,7 @@ function drawInstructions() {
 
   ctx.font='14px Georgia';
   ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-  ctx.fillText('Press SPACE',cx,y);
+  ctx.fillText(isTouchDevice ? 'Tap to continue' : 'Press SPACE',cx,y);
   ctx.restore();
 }
 
@@ -1445,7 +1817,7 @@ function drawStoryIntro() {
 
   ctx.font='13px Georgia';
   ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-  ctx.fillText('Press SPACE to enter the labyrinth...',cx,cy+130);
+  ctx.fillText(isTouchDevice ? 'Tap to enter the labyrinth...' : 'Press SPACE to enter the labyrinth...',cx,cy+130);
   ctx.restore();
 }
 
@@ -1490,7 +1862,7 @@ function drawEndScreen() {
   if (endTimer>90) {
     ctx.font='14px Georgia';
     ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-    ctx.fillText('Press SPACE to play again',cx,cy+55);
+    ctx.fillText(isTouchDevice ? 'Tap to play again' : 'Press SPACE to play again',cx,cy+55);
   }
   ctx.restore();
 }
@@ -1503,12 +1875,169 @@ function applyShake() {
   }
 }
 
+// ===================== AI WITCH =====================
+let aiTimer = 0;
+let aiPath = [];
+let aiWebTimer = 0;
+let aiDecisionTimer = 0;
+let aiCurrentDir = null;
+
+function clearAiInputs() {
+  for (const k in inputState.ai) inputState.ai[k] = false;
+}
+
+// BFS pathfinding on the map grid
+function bfsPath(sx, sy, tx, ty) {
+  if (sx===tx && sy===ty) return [];
+  const visited = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(false));
+  const parent = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(null));
+  const queue = [{x:sx, y:sy}];
+  visited[sy][sx] = true;
+  const dirs = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const d of dirs) {
+      const nx=cur.x+d.dx, ny=cur.y+d.dy;
+      if (nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) continue;
+      if (visited[ny][nx]) continue;
+      if (!canMove(nx, ny, false)) continue;
+      visited[ny][nx] = true;
+      parent[ny][nx] = {x:cur.x, y:cur.y};
+      if (nx===tx && ny===ty) {
+        // Reconstruct path
+        const path = [];
+        let cx=tx, cy=ty;
+        while (cx!==sx || cy!==sy) {
+          path.unshift({x:cx, y:cy});
+          const p = parent[cy][cx];
+          cx=p.x; cy=p.y;
+        }
+        return path;
+      }
+      queue.push({x:nx, y:ny});
+    }
+  }
+  return []; // no path found
+}
+
+function aiMoveRandom() {
+  const dirs = [
+    {key:'KeyW',dx:0,dy:-1},{key:'KeyS',dx:0,dy:1},
+    {key:'KeyA',dx:-1,dy:0},{key:'KeyD',dx:1,dy:0}
+  ];
+  // Change direction periodically or when blocked
+  aiDecisionTimer--;
+  if (aiDecisionTimer <= 0 || (aiCurrentDir && !canMove(witch.x+aiCurrentDir.dx, witch.y+aiCurrentDir.dy, false))) {
+    const valid = dirs.filter(d => canMove(witch.x+d.dx, witch.y+d.dy, false));
+    aiCurrentDir = valid.length > 0 ? valid[randInt(0, valid.length-1)] : null;
+    aiDecisionTimer = randInt(20, 50);
+  }
+  if (aiCurrentDir) inputState.ai[aiCurrentDir.key] = true;
+}
+
+function aiMoveToward(confusionRate) {
+  aiDecisionTimer--;
+  if (aiDecisionTimer > 0 && aiCurrentDir) {
+    if (canMove(witch.x+aiCurrentDir.dx, witch.y+aiCurrentDir.dy, false)) {
+      inputState.ai[aiCurrentDir.key] = true;
+      return;
+    }
+  }
+
+  // Random confusion
+  if (Math.random() < confusionRate) {
+    aiDecisionTimer = 0;
+    aiMoveRandom();
+    return;
+  }
+
+  // Manhattan distance heuristic
+  const dirs = [
+    {key:'KeyW',dx:0,dy:-1},{key:'KeyS',dx:0,dy:1},
+    {key:'KeyA',dx:-1,dy:0},{key:'KeyD',dx:1,dy:0}
+  ];
+  const valid = dirs.filter(d => canMove(witch.x+d.dx, witch.y+d.dy, false));
+  if (valid.length === 0) return;
+
+  // Pick direction closest to hero
+  valid.sort((a,b) => {
+    const da = Math.abs(witch.x+a.dx-hero.x) + Math.abs(witch.y+a.dy-hero.y);
+    const db = Math.abs(witch.x+b.dx-hero.x) + Math.abs(witch.y+b.dy-hero.y);
+    return da - db;
+  });
+  aiCurrentDir = valid[0];
+  aiDecisionTimer = randInt(8, 20);
+  inputState.ai[aiCurrentDir.key] = true;
+}
+
+function aiMoveBFS() {
+  aiDecisionTimer--;
+  if (aiDecisionTimer <= 0 || aiPath.length === 0) {
+    aiPath = bfsPath(witch.x, witch.y, hero.x, hero.y);
+    aiDecisionTimer = randInt(15, 30);
+  }
+  if (aiPath.length > 0) {
+    const next = aiPath[0];
+    const dx = next.x - witch.x, dy = next.y - witch.y;
+    if (dx===1) inputState.ai['KeyD'] = true;
+    else if (dx===-1) inputState.ai['KeyA'] = true;
+    else if (dy===1) inputState.ai['KeyS'] = true;
+    else if (dy===-1) inputState.ai['KeyW'] = true;
+    // Remove step if witch reached it
+    if (witch.x===next.x && witch.y===next.y) aiPath.shift();
+  }
+}
+
+function aiPlaceWeb(webChance, superChance) {
+  aiWebTimer--;
+  if (aiWebTimer > 0) return;
+
+  const dist = Math.abs(witch.x-hero.x) + Math.abs(witch.y-hero.y);
+  if (dist > 6) { aiWebTimer = 30; return; } // too far
+
+  if (Math.random() < superChance && witchSuperWebCount < MAX_SUPER_WEBS) {
+    inputState.ai['KeyQ'] = true;
+    aiWebTimer = randInt(180, 360);
+  } else if (Math.random() < webChance && witchWebCount < MAX_WEBS) {
+    inputState.ai['KeyE'] = true;
+    aiWebTimer = randInt(60, 150);
+  } else {
+    aiWebTimer = 30;
+  }
+}
+
+function updateAI() {
+  if (gameMode !== '1p') return;
+  if (state !== S.PLAYING && state !== S.HERO_FREED && state !== S.PRINCESS_TRAPPED) return;
+  clearAiInputs();
+  aiTimer++;
+
+  switch (aiDifficulty) {
+    case 'easy':
+      if (aiTimer % 2 === 0) aiMoveRandom(); // slower movement
+      aiPlaceWeb(0.08, 0);  // rare webs, no super
+      break;
+    case 'medium':
+      aiMoveToward(0.3);  // 30% confusion
+      aiPlaceWeb(0.15, 0.03);  // moderate webs, rare super
+      break;
+    case 'hard':
+      aiMoveBFS();  // pathfinding
+      aiPlaceWeb(0.2, 0.08);  // frequent webs + supers
+      break;
+  }
+}
+
 // ===================== MAIN LOOP =====================
 function update() {
   time++;
   if (webCooldown>0) webCooldown--;
   if (superWebCooldown>0) superWebCooldown--;
   if (superPowerCooldown>0) superPowerCooldown--;
+
+  updateAI(); // AI witch (no-op if gameMode !== '1p')
+  updateTouchControlsVisibility();
 
   if (state===S.PLAYING||state===S.HERO_FREED) {
     // Labyrinth entry message

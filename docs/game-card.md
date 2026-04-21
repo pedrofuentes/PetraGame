@@ -22,7 +22,7 @@
 | **😈 Challenge** | The witch places regular webs (slow for 1.5s) and super webs (trap for 4s!), 120-second timer, castle freeze spell, labyrinth with multiple routes |
 | **🎨 Look** | Dark magical labyrinth with purple walls, bright pink castle with glowing candle flames, sunny green home world — all drawn with sparkly particle effects! |
 | **🔊 Sound** | Web Audio API synth sounds — movement bleeps, web splats, magic blast chimes, victory fanfares, time warnings |
-| **⭐ Special Thing** | **2-player asymmetric gameplay on one keyboard!** One person plays the princess (arrow keys + SHIFT), the other plays the witch (WASD + E/Q). The princess has superpowers, the witch has webs! |
+| **⭐ Special Thing** | **2-player asymmetric gameplay on one keyboard!** One person plays the princess (arrow keys + SHIFT), the other plays the witch (WASD + E/Q). The princess has superpowers, the witch has webs! **Now playable on tablets** with touch controls and AI witch! |
 
 ### 🖼️ My Game Drawing
 
@@ -63,6 +63,9 @@
 - "The witch should have less webs but also a super web that is bright and green" → Added super webs
 - "There's a limited time" → Added countdown timer
 
+**Version 4 feedback:**
+- Petra wants to play on a tablet → Added touch controls (virtual d-pad + action buttons), AI-controlled witch for single-player mode (Easy/Medium/Hard difficulty), and touch-friendly menus
+
 ---
 
-*This Game Card reflects the current state of the game as of Version 3.5.*
+*This Game Card reflects the current state of the game as of Version 4.*
