@@ -51,6 +51,7 @@ canvas {
   padding-bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 10;
   pointer-events: none;
+  background: linear-gradient(to top, rgba(7,0,15,0.7) 0%, rgba(7,0,15,0) 100%);
 }
 #touch-controls.visible { display: flex; }
 .tc-side {
@@ -246,12 +247,9 @@ let castleFightPresses = 0;
 function resizeCanvas() {
   canvas.width = MAP_W * CELL;
   canvas.height = MAP_H * CELL;
-  // Only subtract controls height when they're actually visible
-  const controlsVisible = isTouchDevice && touchControls.classList.contains('visible');
-  const controlsH = controlsVisible ? (touchControls.offsetHeight || 160) : 0;
   const pad = isTouchDevice ? 8 : 16;
   const sx = (window.innerWidth - pad) / canvas.width;
-  const sy = ((window.visualViewport?.height || window.innerHeight) - pad - controlsH) / canvas.height;
+  const sy = ((window.visualViewport?.height || window.innerHeight) - pad) / canvas.height;
   const scale = Math.min(sx, sy, 3.5);
   canvas.style.width = Math.floor(canvas.width * scale) + 'px';
   canvas.style.height = Math.floor(canvas.height * scale) + 'px';
@@ -540,7 +538,6 @@ window.addEventListener('blur', clearAllTouchInputs);
 document.addEventListener('visibilitychange', () => { if (document.hidden) clearAllTouchInputs(); });
 
 // Show/hide touch controls based on state
-let _lastControlsVisible = false;
 function updateTouchControlsVisibility() {
   if (!isTouchDevice) return;
   const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED);
@@ -549,10 +546,6 @@ function updateTouchControlsVisibility() {
     tcWitch.style.display = gameMode === '2p' ? 'flex' : 'none';
   } else {
     touchControls.classList.remove('visible');
-  }
-  if (showControls !== _lastControlsVisible) {
-    _lastControlsVisible = showControls;
-    resizeCanvas();
   }
 }
 
