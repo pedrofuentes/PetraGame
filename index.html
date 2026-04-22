@@ -2095,6 +2095,14 @@ function gameLoop() { update(); render(); requestAnimationFrame(gameLoop); }
 resizeCanvas();
 gameLoop();
 
+// Register service worker for cache refresh on iPad home screen
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    // Check for updates every time the app is opened
+    reg.update();
+  }).catch(() => {});
+}
+
 </script>
 </body>
 </html>
