@@ -439,7 +439,7 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { inputState.keyboard[e.code]=false; });
 
-// ===================== CANVAS TAP (for menus on touch) =====================
+// ===================== CANVAS TAP/CLICK (for menus) =====================
 function getCanvasTapPos(e) {
   const rect = canvas.getBoundingClientRect();
   const touch = e.changedTouches ? e.changedTouches[0] : e;
@@ -448,40 +448,46 @@ function getCanvasTapPos(e) {
   return { x, y };
 }
 
+function handleTitleClick(pos) {
+  const cx = canvas.width / 2;
+  const modeY = canvas.height / 2 + 95;
+  // Mode buttons
+  if (pos.y >= modeY - 14 && pos.y <= modeY + 14) {
+    if (pos.x >= cx - 120 && pos.x < cx) { gameMode = '1p'; return true; }
+    if (pos.x >= cx && pos.x <= cx + 120) { gameMode = '2p'; return true; }
+  }
+  // Difficulty buttons (only in 1p mode)
+  if (gameMode === '1p') {
+    const diffY = modeY + 32;
+    if (pos.y >= diffY - 12 && pos.y <= diffY + 12) {
+      const bw = 70, gap = 8, totalW = bw * 3 + gap * 2;
+      const startX = cx - totalW / 2;
+      if (pos.x >= startX && pos.x < startX + bw) { aiDifficulty = 'easy'; return true; }
+      if (pos.x >= startX + bw + gap && pos.x < startX + bw * 2 + gap) { aiDifficulty = 'medium'; return true; }
+      if (pos.x >= startX + bw * 2 + gap * 2 && pos.x < startX + bw * 3 + gap * 2) { aiDifficulty = 'hard'; return true; }
+    }
+  }
+  return false;
+}
+
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
+  initAudio();
   const pos = getCanvasTapPos(e);
-
-  // Title screen: handle mode & difficulty buttons
-  if (state === S.TITLE) {
-    const cx = canvas.width / 2;
-    // Mode buttons: 1P and 2P
-    const modeY = canvas.height / 2 + 95;
-    if (isTouchDevice) {
-      if (pos.y >= modeY - 14 && pos.y <= modeY + 14) {
-        if (pos.x >= cx - 120 && pos.x < cx) { gameMode = '1p'; return; }
-        if (pos.x >= cx && pos.x <= cx + 120) { gameMode = '2p'; return; }
-      }
-      // Difficulty buttons (only in 1p mode)
-      if (gameMode === '1p') {
-        const diffY = modeY + 32;
-        if (pos.y >= diffY - 12 && pos.y <= diffY + 12) {
-          const bw = 70, gap = 8, totalW = bw * 3 + gap * 2;
-          const startX = cx - totalW / 2;
-          if (pos.x >= startX && pos.x < startX + bw) { aiDifficulty = 'easy'; return; }
-          if (pos.x >= startX + bw + gap && pos.x < startX + bw * 2 + gap) { aiDifficulty = 'medium'; return; }
-          if (pos.x >= startX + bw * 2 + gap * 2 && pos.x < startX + bw * 3 + gap * 2) { aiDifficulty = 'hard'; return; }
-        }
-      }
-    }
-    advanceFlow();
-    return;
-  }
-
-  if (state===S.INSTRUCTIONS||state===S.STORY_INTRO||state===S.HERO_WINS||state===S.WITCH_WINS_TIME) {
+  if (state === S.TITLE && handleTitleClick(pos)) return;
+  if (state===S.TITLE||state===S.INSTRUCTIONS||state===S.STORY_INTRO||state===S.HERO_WINS||state===S.WITCH_WINS_TIME) {
     advanceFlow();
   }
 }, { passive: false });
+
+canvas.addEventListener('click', e => {
+  initAudio();
+  const pos = getCanvasTapPos(e);
+  if (state === S.TITLE && handleTitleClick(pos)) return;
+  if (state===S.TITLE||state===S.INSTRUCTIONS||state===S.STORY_INTRO||state===S.HERO_WINS||state===S.WITCH_WINS_TIME) {
+    advanceFlow();
+  }
+});
 
 // ===================== TOUCH CONTROLS =====================
 function setupTouchControl(el) {
@@ -1600,60 +1606,54 @@ function drawTitle() {
   ctx.strokeStyle='rgba(200,100,255,0.3)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(cx-120,cy+48); ctx.lineTo(cx+120,cy+48); ctx.stroke();
 
-  if (isTouchDevice) {
-    // Mode selection buttons
-    const modeY = cy + 95;
-    ctx.font='bold 14px Georgia';
-    // 1 Player button
-    const is1P = gameMode === '1p';
-    ctx.fillStyle = is1P ? 'rgba(255,215,0,0.25)' : 'rgba(40,20,60,0.6)';
-    ctx.strokeStyle = is1P ? '#ffd700' : 'rgba(200,150,255,0.3)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(cx-120, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = is1P ? '#ffd700' : 'rgba(200,180,255,0.6)';
-    ctx.fillText('👤 1 Player', cx-62, modeY+5);
-    // 2 Players button
-    const is2P = gameMode === '2p';
-    ctx.fillStyle = is2P ? 'rgba(0,255,100,0.2)' : 'rgba(40,20,60,0.6)';
-    ctx.strokeStyle = is2P ? '#00ff88' : 'rgba(200,150,255,0.3)';
-    ctx.beginPath(); ctx.roundRect(cx+5, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = is2P ? '#00ff88' : 'rgba(200,180,255,0.6)';
-    ctx.fillText('👥 2 Players', cx+62, modeY+5);
+  // Mode selection buttons (all devices)
+  const modeY = cy + 95;
+  ctx.font='bold 14px Georgia';
+  // 1 Player button
+  const is1P = gameMode === '1p';
+  ctx.fillStyle = is1P ? 'rgba(255,215,0,0.25)' : 'rgba(40,20,60,0.6)';
+  ctx.strokeStyle = is1P ? '#ffd700' : 'rgba(200,150,255,0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(cx-120, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = is1P ? '#ffd700' : 'rgba(200,180,255,0.6)';
+  ctx.fillText('👤 1 Player', cx-62, modeY+5);
+  // 2 Players button
+  const is2P = gameMode === '2p';
+  ctx.fillStyle = is2P ? 'rgba(0,255,100,0.2)' : 'rgba(40,20,60,0.6)';
+  ctx.strokeStyle = is2P ? '#00ff88' : 'rgba(200,150,255,0.3)';
+  ctx.beginPath(); ctx.roundRect(cx+5, modeY-14, 115, 28, 8); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = is2P ? '#00ff88' : 'rgba(200,180,255,0.6)';
+  ctx.fillText('👥 2 Players', cx+62, modeY+5);
 
-    // Difficulty selection (only in 1P)
-    if (gameMode === '1p') {
-      const diffY = modeY + 32;
-      ctx.font='12px Georgia';
-      const diffs = [
-        {id:'easy', label:'🌸 Easy', col:'#88ff88'},
-        {id:'medium', label:'⚔️ Medium', col:'#ffaa44'},
-        {id:'hard', label:'🔥 Hard', col:'#ff5555'}
-      ];
-      const bw=70, gap=8, totalW=bw*3+gap*2;
-      const startX=cx-totalW/2;
-      for (let i=0;i<3;i++) {
-        const d=diffs[i], bx=startX+i*(bw+gap);
-        const sel = aiDifficulty===d.id;
-        ctx.fillStyle = sel ? 'rgba(255,255,255,0.12)' : 'rgba(20,10,30,0.5)';
-        ctx.strokeStyle = sel ? d.col : 'rgba(150,130,200,0.3)';
-        ctx.lineWidth = sel ? 2 : 1;
-        ctx.beginPath(); ctx.roundRect(bx, diffY-12, bw, 24, 6); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = sel ? d.col : 'rgba(200,180,255,0.5)';
-        ctx.fillText(d.label, bx+bw/2, diffY+4);
-      }
+  // Difficulty selection (only in 1P)
+  if (gameMode === '1p') {
+    const diffY = modeY + 32;
+    ctx.font='12px Georgia';
+    const diffs = [
+      {id:'easy', label:'🌸 Easy', col:'#88ff88'},
+      {id:'medium', label:'⚔️ Medium', col:'#ffaa44'},
+      {id:'hard', label:'🔥 Hard', col:'#ff5555'}
+    ];
+    const bw=70, gap=8, totalW=bw*3+gap*2;
+    const startX=cx-totalW/2;
+    for (let i=0;i<3;i++) {
+      const d=diffs[i], bx=startX+i*(bw+gap);
+      const sel = aiDifficulty===d.id;
+      ctx.fillStyle = sel ? 'rgba(255,255,255,0.12)' : 'rgba(20,10,30,0.5)';
+      ctx.strokeStyle = sel ? d.col : 'rgba(150,130,200,0.3)';
+      ctx.lineWidth = sel ? 2 : 1;
+      ctx.beginPath(); ctx.roundRect(bx, diffY-12, bw, 24, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = sel ? d.col : 'rgba(200,180,255,0.5)';
+      ctx.fillText(d.label, bx+bw/2, diffY+4);
     }
-
-    ctx.font='14px Georgia';
-    ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-    ctx.fillText('Tap to start',cx,cy+155);
-  } else {
-    ctx.font='14px Georgia';
-    ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-    ctx.fillText('Press SPACE to start',cx,cy+72);
   }
 
+  ctx.font='14px Georgia';
+  ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
+  ctx.fillText(isTouchDevice ? 'Tap to start' : 'Press SPACE to start',cx,cy+155);
+
   ctx.font='11px Georgia'; ctx.fillStyle='rgba(150,130,200,0.5)';
-  ctx.fillText('Designed by Petra ✨',cx, isTouchDevice ? cy+175 : cy+100);
+  ctx.fillText('Designed by Petra ✨',cx, cy+175);
   ctx.restore();
 }
 
