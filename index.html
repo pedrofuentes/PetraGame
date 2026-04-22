@@ -1947,6 +1947,28 @@ function aiMoveRandom() {
 }
 
 function aiMoveToward(confusionRate) {
+  const dist = Math.abs(witch.x-hero.x) + Math.abs(witch.y-hero.y);
+  // Stay 2-3 tiles away — lurk and place webs, don't stack
+  if (dist <= 2) {
+    // Move away or sideways
+    const dirs = [
+      {key:'KeyW',dx:0,dy:-1},{key:'KeyS',dx:0,dy:1},
+      {key:'KeyA',dx:-1,dy:0},{key:'KeyD',dx:1,dy:0}
+    ];
+    const awayDirs = dirs.filter(d => {
+      if (!canMove(witch.x+d.dx, witch.y+d.dy, false)) return false;
+      const newDist = Math.abs(witch.x+d.dx-hero.x) + Math.abs(witch.y+d.dy-hero.y);
+      return newDist >= dist;
+    });
+    if (awayDirs.length > 0 && aiDecisionTimer <= 0) {
+      const pick = awayDirs[randInt(0, awayDirs.length-1)];
+      inputState.ai[pick.key] = true;
+      aiDecisionTimer = randInt(15, 30);
+    }
+    aiDecisionTimer--;
+    return;
+  }
+
   aiDecisionTimer--;
   if (aiDecisionTimer > 0 && aiCurrentDir) {
     if (canMove(witch.x+aiCurrentDir.dx, witch.y+aiCurrentDir.dy, false)) {
@@ -1982,9 +2004,33 @@ function aiMoveToward(confusionRate) {
 }
 
 function aiMoveBFS() {
+  const dist = Math.abs(witch.x-hero.x) + Math.abs(witch.y-hero.y);
+  // Stay 2 tiles away — lurk and place webs, don't stack on princess
+  if (dist <= 2) {
+    const dirs = [
+      {key:'KeyW',dx:0,dy:-1},{key:'KeyS',dx:0,dy:1},
+      {key:'KeyA',dx:-1,dy:0},{key:'KeyD',dx:1,dy:0}
+    ];
+    const awayDirs = dirs.filter(d => {
+      if (!canMove(witch.x+d.dx, witch.y+d.dy, false)) return false;
+      const newDist = Math.abs(witch.x+d.dx-hero.x) + Math.abs(witch.y+d.dy-hero.y);
+      return newDist >= dist;
+    });
+    if (awayDirs.length > 0 && aiDecisionTimer <= 0) {
+      const pick = awayDirs[randInt(0, awayDirs.length-1)];
+      inputState.ai[pick.key] = true;
+      aiDecisionTimer = randInt(10, 20);
+    }
+    aiDecisionTimer--;
+    aiPath = [];
+    return;
+  }
+
   aiDecisionTimer--;
   if (aiDecisionTimer <= 0 || aiPath.length === 0) {
     aiPath = bfsPath(witch.x, witch.y, hero.x, hero.y);
+    // Trim last 2 steps to stop short of the princess
+    if (aiPath.length > 2) aiPath = aiPath.slice(0, -2);
     aiDecisionTimer = randInt(15, 30);
   }
   if (aiPath.length > 0) {
