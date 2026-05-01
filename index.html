@@ -153,9 +153,9 @@ canvas {
 </div>
 <script>
 // ================================================================
-//  PETRA'S GAME — Witches & Princesses  (v4)
+//  PETRA'S GAME — Witches & Princesses  (v5)
 //  Designed by Petra (age 6) — Built with love
-//  Superpowers, Super Webs, Timer, Story & Tablet Touch Controls!
+//  Superpowers, Super Webs, Timer, Story, Tablet Touch Controls & Pool Level!
 // ================================================================
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -187,12 +187,14 @@ const EXTRA_PASSAGES = 3;        // break walls for alternate routes
 // Tiles
 const WALL = 0, FLOOR = 1, PRINCESS_FLOOR = 2, REAL_WORLD = 3;
 const PRINCESS_DOOR = 4, REAL_DOOR = 5;
+const POOL_WATER = 6, HOME_TILE = 7, GARDEN_FLOOR = 8;
 
 // States
 const S = {
   TITLE: 0, INSTRUCTIONS: 1, STORY_INTRO: 2, PLAYING: 3,
   PRINCESS_TRAPPED: 4, HERO_FREED: 5,
-  HERO_WINS: 6, WITCH_WINS_TIME: 7
+  HERO_WINS: 6, WITCH_WINS_TIME: 7,
+  POOL_LEVEL: 8
 };
 
 // ===================== GAME VARIABLES =====================
@@ -244,6 +246,12 @@ let heroInPrincess = false;
 let endTimer = 0;
 let introShown = false;
 let castleFightPresses = 0;
+// Pool level state
+let poolLevel = false;
+let heroSwimming = false, heroSwimTimer = 0;
+let witchSwimming = false, witchSwimTimer = 0;
+let poolIntroShown = false;
+let poolLoseReason = ''; // 'hero_drowned' or 'witch_drowned'
 
 // ===================== CANVAS SIZING =====================
 function resizeCanvas() {
@@ -309,6 +317,23 @@ function sfxWin() {
 function sfxTimeWarn() { playTone(440,0.1,'square',0.06); }
 function sfxFight() { playTone(600+Math.random()*200,0.08,'sine',0.06); }
 function sfxLabyrinthEntry() { playTone(80,1,'sawtooth',0.06); setTimeout(()=>playTone(60,0.8,'sine',0.05),200); }
+// Pool level sounds
+function sfxSplash() {
+  playTone(200,0.3,'sine',0.12);
+  setTimeout(()=>playTone(300,0.2,'triangle',0.08),50);
+  setTimeout(()=>playTone(150,0.4,'sine',0.06),100);
+}
+function sfxEscape() {
+  [400,600,800,1000].forEach((f,i)=>setTimeout(()=>playTone(f,0.15,'sine',0.08),i*60));
+}
+function sfxDrown() {
+  // Gentle bubbling — major key, not scary
+  [200,250,300,250,200].forEach((f,i)=>setTimeout(()=>playTone(f,0.2,'sine',0.06),i*100));
+}
+function sfxPoolWin() {
+  // Bigger fanfare for reaching the house
+  [523,659,784,880,1047,1319,1568].forEach((f,i)=>setTimeout(()=>playTone(f,0.4,'sine',0.12),i*100));
+}
 
 // ===================== MAZE GENERATION =====================
 function generateMaze() {
@@ -402,6 +427,53 @@ function generateMaze() {
   witch = {x:wg.x,y:wg.y,dir:0,trail:[],drawX:wg.x*CELL,drawY:wg.y*CELL};
 }
 
+// ===================== POOL LEVEL MAP GENERATION =====================
+const SWIM_TIME = 300; // 5 seconds at 60fps
+const SWIM_MOVE_DELAY = 30; // 3x normal movement delay
+
+function generatePoolLevel() {
+  map = [];
+  for (let y=0;y<MAP_H;y++) { map[y]=[]; for (let x=0;x<MAP_W;x++) map[y][x]=WALL; }
+
+  const pcx = Math.floor(MAP_W/2); // center column (7)
+
+  // Garden floor — fill walkable area (rows 1-17, cols 1-13)
+  for (let y=1;y<MAP_H-1;y++)
+    for (let x=1;x<MAP_W-1;x++)
+      map[y][x] = GARDEN_FLOOR;
+
+  // House at top center (rows 1-2, cols pcx-2 to pcx+2)
+  for (let y=1;y<=2;y++)
+    for (let x=pcx-2;x<=pcx+2;x++)
+      map[y][x] = HOME_TILE;
+
+  // Pool in center (rows 7-11, cols 4-10) — 7×5 pool
+  for (let y=7;y<=11;y++)
+    for (let x=4;x<=10;x++)
+      map[y][x] = POOL_WATER;
+
+  // Reset gameplay state for pool level
+  webs=[]; particles=[];
+  webCooldown=0; superWebCooldown=0;
+  witchWebCount=0; witchSuperWebCount=0;
+  heroSlowTimer=0; heroSlowFlash=0; heroSlowIsSuper=false;
+  superPowerCooldown=0;
+  moveTimers={hero:0,witch:0};
+  heroSwimming=false; heroSwimTimer=0;
+  witchSwimming=false; witchSwimTimer=0;
+  poolIntroShown=false; poolLoseReason='';
+  poolLevel=true;
+
+  // Reset AI state
+  aiTimer=0; aiPath=[]; aiWebTimer=0; aiDecisionTimer=0; aiCurrentDir=null;
+  aiPrincessPath=[]; aiPrincessTimer=0; aiPrincessDir=null; aiPrincessSuperTimer=0;
+  clearAiInputs();
+
+  // Place characters at bottom of garden
+  hero = {x:3,y:16,dir:0,trail:[],drawX:3*CELL,drawY:16*CELL};
+  witch = {x:11,y:16,dir:0,trail:[],drawX:11*CELL,drawY:16*CELL};
+}
+
 // ===================== GAME INIT =====================
 function initGame() {
   webs=[]; particles=[];
@@ -419,6 +491,11 @@ function initGame() {
   messageText=''; messageAlpha=0;
   shakeAmount=0; gameTimer=GAME_TIME;
   castleFightPresses=0;
+  // Pool level reset
+  poolLevel=false;
+  heroSwimming=false; heroSwimTimer=0;
+  witchSwimming=false; witchSwimTimer=0;
+  poolIntroShown=false; poolLoseReason='';
   // Reset AI state
   aiTimer=0; aiPath=[]; aiWebTimer=0; aiDecisionTimer=0; aiCurrentDir=null;
   aiPrincessPath=[]; aiPrincessTimer=0; aiPrincessDir=null; aiPrincessSuperTimer=0;
@@ -432,7 +509,7 @@ function advanceFlow() {
   if (state===S.TITLE) state=S.INSTRUCTIONS;
   else if (state===S.INSTRUCTIONS) state=S.STORY_INTRO;
   else if (state===S.STORY_INTRO) { state=S.PLAYING; initGame(); introShown=false; }
-  else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) state=S.TITLE;
+  else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) { state=S.TITLE; poolLevel=false; }
   resizeCanvas(); // re-fit canvas for new state
 }
 
@@ -565,7 +642,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
 // Show/hide touch controls based on state
 function updateTouchControlsVisibility() {
   if (!isTouchDevice) return;
-  const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED);
+  const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED||state===S.POOL_LEVEL);
   if (showControls) {
     touchControls.classList.add('visible');
     if (gameMode === '2p') {
@@ -596,6 +673,7 @@ function canMove(x,y,isHero) {
   if (t===REAL_DOOR&&!doorUnlocked.real) return false;
   if (!isHero&&(t===PRINCESS_DOOR||t===PRINCESS_FLOOR)) return false;
   if (!isHero&&(t===REAL_DOOR||t===REAL_WORLD)) return false;
+  if (!isHero&&t===HOME_TILE) return false; // witch can't enter the house
   return true;
 }
 
@@ -615,7 +693,11 @@ function handleInput(ek,e,isHero) {
   if (moveTimers[k]>0) { moveTimers[k]--; return; }
   let moved = false;
   for (const [code,dx,dy] of ek) { if (keys[code]) { moved=moveEntity(e,dx,dy,isHero); break; } }
-  if (moved) moveTimers[k]=MOVE_DELAY;
+  if (moved) {
+    // Swimming characters move much slower
+    const swimming = isHero ? heroSwimming : witchSwimming;
+    moveTimers[k] = swimming ? SWIM_MOVE_DELAY : MOVE_DELAY;
+  }
 }
 
 const heroKeys = [['ArrowUp',0,-1],['ArrowDown',0,1],['ArrowLeft',-1,0],['ArrowRight',1,0]];
@@ -718,15 +800,18 @@ function checkCollisions() {
   }
 
   if (state===S.HERO_FREED&&map[hero.y][hero.x]===REAL_WORLD) {
-    state=S.HERO_WINS;
-    sfxWin(); endTimer=0;
-    // Epic homecoming burst — golden + rainbow celebration!
-    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.9)',60,5,80,5);
-    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,100,200,0.8)',30,4,60,4);
-    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,200,255,0.8)',30,4,60,4);
-    // Screen-wide golden rain
-    for (let i=0;i<40;i++)
-      spawnParticle(rand(0,MAP_W*CELL),0,'rgba(255,215,0,0.7)',80+rand(0,40),rand(-1,1),rand(1,3),rand(2,5));
+    // Transition to pool level instead of immediate win
+    state=S.POOL_LEVEL;
+    sfxFree();
+    messageText='🏊 Almost home! Watch out for the pool!';
+    messageAlpha=2;
+    shakeAmount=6;
+    // Celebration for reaching Real World
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.9)',40,4,50,4);
+    for (let i=0;i<20;i++)
+      spawnParticle(rand(0,MAP_W*CELL),0,'rgba(255,215,0,0.7)',60+rand(0,30),rand(-1,1),rand(1,3),rand(2,5));
+    generatePoolLevel();
+    resizeCanvas();
   }
 }
 
@@ -805,7 +890,7 @@ function updateSlowTimer() {
 
 function updateSuperWebWarning() {
   // Warn princess when near a super web
-  if (state!==S.PLAYING&&state!==S.HERO_FREED) return;
+  if (state!==S.PLAYING&&state!==S.HERO_FREED&&state!==S.POOL_LEVEL) return;
   for (const w of webs) {
     if (!w.isSuper) continue;
     const dx=Math.abs(hero.x-w.x), dy=Math.abs(hero.y-w.y);
@@ -814,6 +899,83 @@ function updateSuperWebWarning() {
         hero.x*CELL+CELL/2+rand(-10,10), hero.y*CELL+rand(-5,5),
         'rgba(255,50,50,0.6)',15,0,-1,2
       );
+    }
+  }
+}
+
+// ===================== POOL LEVEL — SWIMMING =====================
+function checkPoolCollisions() {
+  if (!poolLevel) return;
+  // Check hero falling in pool
+  if (map[hero.y][hero.x]===POOL_WATER && !heroSwimming) {
+    heroSwimming=true; heroSwimTimer=SWIM_TIME;
+    sfxSplash(); shakeAmount=6;
+    messageText='🏊 Splash! Swim to the edge!';
+    messageAlpha=1.5;
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,180,255,0.8)',20,3,30,3);
+  }
+  // Check witch falling in pool
+  if (map[witch.y][witch.x]===POOL_WATER && !witchSwimming) {
+    witchSwimming=true; witchSwimTimer=SWIM_TIME;
+    sfxSplash(); shakeAmount=6;
+    messageText='🏊 The witch fell in the pool!';
+    messageAlpha=1.5;
+    spawnBurst(witch.x*CELL+CELL/2,witch.y*CELL+CELL/2,'rgba(100,180,255,0.8)',20,3,30,3);
+  }
+  // Check hero reached home — win check takes priority
+  if (map[hero.y][hero.x]===HOME_TILE) {
+    state=S.HERO_WINS; poolLoseReason='';
+    sfxPoolWin(); endTimer=0;
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,215,0,0.9)',60,5,80,5);
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(255,100,200,0.8)',30,4,60,4);
+    spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,200,255,0.8)',30,4,60,4);
+    for (let i=0;i<40;i++)
+      spawnParticle(rand(0,MAP_W*CELL),0,'rgba(255,215,0,0.7)',80+rand(0,40),rand(-1,1),rand(1,3),rand(2,5));
+    return;
+  }
+}
+
+function updateSwimming() {
+  if (!poolLevel) return;
+  // Hero swimming
+  if (heroSwimming) {
+    heroSwimTimer--;
+    // Swim particles
+    if (time%8===0)
+      spawnParticle(hero.x*CELL+rand(4,CELL-4),hero.y*CELL+rand(4,CELL-4),'rgba(100,200,255,0.5)',20,rand(-1,1),rand(-1,0),2);
+    // Check if escaped (moved to non-water tile)
+    if (map[hero.y][hero.x]!==POOL_WATER) {
+      heroSwimming=false; heroSwimTimer=0;
+      sfxEscape();
+      messageText='✨ Escaped the pool!';
+      messageAlpha=1;
+      spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,255,200,0.8)',15,3,25,3);
+    } else if (heroSwimTimer<=0) {
+      // Princess drowned — witch wins
+      poolLoseReason='hero_drowned';
+      state=S.WITCH_WINS_TIME; endTimer=0;
+      sfxDrown(); shakeAmount=8;
+      spawnBurst(hero.x*CELL+CELL/2,hero.y*CELL+CELL/2,'rgba(100,180,255,0.6)',25,2,40,3);
+    }
+  }
+  // Witch swimming
+  if (witchSwimming) {
+    witchSwimTimer--;
+    if (time%8===0)
+      spawnParticle(witch.x*CELL+rand(4,CELL-4),witch.y*CELL+rand(4,CELL-4),'rgba(100,200,255,0.5)',20,rand(-1,1),rand(-1,0),2);
+    if (map[witch.y][witch.x]!==POOL_WATER) {
+      witchSwimming=false; witchSwimTimer=0;
+      sfxEscape();
+      messageText='🧙 The witch escaped the pool!';
+      messageAlpha=1;
+    } else if (witchSwimTimer<=0) {
+      // Witch drowned — princess wins
+      poolLoseReason='witch_drowned';
+      state=S.HERO_WINS; endTimer=0;
+      sfxPoolWin();
+      spawnBurst(witch.x*CELL+CELL/2,witch.y*CELL+CELL/2,'rgba(100,180,255,0.6)',25,2,40,3);
+      for (let i=0;i<30;i++)
+        spawnParticle(rand(0,MAP_W*CELL),0,'rgba(255,215,0,0.7)',60+rand(0,30),rand(-1,1),rand(1,3),rand(2,5));
     }
   }
 }
@@ -845,6 +1007,9 @@ function spawnAmbientParticles() {
   if (t===FLOOR) spawnParticle(x,y,'rgba(100,50,180,0.25)',60,rand(-0.3,0.3),rand(-0.5,-0.1),2);
   else if (t===PRINCESS_FLOOR) spawnParticle(x,y,'rgba(255,100,200,0.25)',50,rand(-0.2,0.2),rand(-0.4,-0.1),2);
   else if (t===REAL_WORLD) spawnParticle(x,y,'rgba(255,215,100,0.35)',50,rand(-0.2,0.2),rand(-0.3,0),2);
+  else if (t===POOL_WATER) spawnParticle(x,y,'rgba(100,200,255,0.3)',40,rand(-0.3,0.3),rand(-0.2,0.1),2);
+  else if (t===GARDEN_FLOOR&&Math.random()<0.3) spawnParticle(x,y,'rgba(100,200,80,0.2)',40,rand(-0.2,0.2),rand(-0.3,0),2);
+  else if (t===HOME_TILE) spawnParticle(x,y,'rgba(255,215,100,0.4)',50,rand(-0.2,0.2),rand(-0.4,-0.1),2);
 }
 
 // ===================== RENDERING — MAP =====================
@@ -888,15 +1053,45 @@ function drawMap() {
           ctx.fillStyle='#1a0a2e'; ctx.fillRect(px+8,py+6,CELL-16,CELL-8);
           if (doorUnlocked.real) { ctx.fillStyle=`rgba(255,215,0,${0.3+Math.sin(time*0.12)*0.2})`; ctx.fillRect(px,py,CELL,CELL); }
           break;
+        case POOL_WATER: {
+          // Animated blue water with wave shimmer
+          const wv=Math.sin(time*0.06+x*0.8+y*0.5)*10;
+          ctx.fillStyle=`rgb(${30+wv},${80+wv},${180+wv})`; ctx.fillRect(px,py,CELL,CELL);
+          // Wave highlights
+          ctx.fillStyle=`rgba(150,220,255,${0.1+Math.sin(time*0.08+x+y*2)*0.08})`;
+          ctx.fillRect(px,py,CELL,CELL);
+          // Ripple lines
+          ctx.strokeStyle=`rgba(200,240,255,${0.15+Math.sin(time*0.1+x*3)*0.1})`;
+          ctx.lineWidth=1;
+          const ry=py+CELL/2+Math.sin(time*0.07+x)*3;
+          ctx.beginPath(); ctx.moveTo(px+2,ry); ctx.lineTo(px+CELL-2,ry); ctx.stroke();
+          break; }
+        case HOME_TILE: {
+          // Warm golden glow — house destination
+          const hg=Math.sin(time*0.05)*10;
+          ctx.fillStyle=`rgb(${50+hg},${40+hg},${15})`; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle=`rgba(255,215,100,${0.08+Math.sin(time*0.07+x)*0.04})`; ctx.fillRect(px,py,CELL,CELL);
+          break; }
+        case GARDEN_FLOOR: {
+          // Bright green grass
+          const gg=Math.sin(time*0.04+x+y)*8;
+          ctx.fillStyle=`rgb(${30+gg},${60+gg},${20+gg})`; ctx.fillRect(px,py,CELL,CELL);
+          ctx.fillStyle=`rgba(80,180,60,${0.06+Math.sin(time*0.05+x*2+y)*0.03})`; ctx.fillRect(px,py,CELL,CELL);
+          break; }
       }
     }
   }
   // Zone labels
   ctx.save(); ctx.font='bold 11px Georgia'; ctx.textAlign='center';
   const midX=Math.floor(MAP_W/2)*CELL+CELL/2;
-  ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.fillText('⭐ REAL WORLD ⭐',midX,CELL-4);
-  ctx.fillStyle='rgba(255,100,200,0.5)'; ctx.fillText('👑 PRINCESS CASTLE 👑',midX,4.5*CELL+5);
-  ctx.fillStyle='rgba(150,50,255,0.4)'; ctx.fillText('🕷️ WITCH LABYRINTH 🕷️',midX,(ROOM_ROWS+1)*CELL-5);
+  if (poolLevel) {
+    ctx.fillStyle='rgba(255,215,100,0.6)'; ctx.fillText('🏠 HOME 🏠',midX,1.5*CELL+5);
+    ctx.fillStyle='rgba(100,180,255,0.6)'; ctx.fillText('🏊 POOL 🏊',midX,9.5*CELL+5);
+  } else {
+    ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.fillText('⭐ REAL WORLD ⭐',midX,CELL-4);
+    ctx.fillStyle='rgba(255,100,200,0.5)'; ctx.fillText('👑 PRINCESS CASTLE 👑',midX,4.5*CELL+5);
+    ctx.fillStyle='rgba(150,50,255,0.4)'; ctx.fillText('🕷️ WITCH LABYRINTH 🕷️',midX,(ROOM_ROWS+1)*CELL-5);
+  }
   ctx.restore();
 }
 
@@ -1150,7 +1345,167 @@ function drawRealWorldDecorations() {
   ctx.restore();
 }
 
-// ===================== RENDERING — WEBS =====================
+// ===================== RENDERING — POOL LEVEL DECORATIONS =====================
+function drawPoolDecorations() {
+  const pcx = Math.floor(MAP_W/2);
+  ctx.save();
+
+  // --- Grass blades on garden floor ---
+  for (let y=1;y<MAP_H-1;y++) for (let x=1;x<MAP_W-1;x++) {
+    if (map[y][x]!==GARDEN_FLOOR) continue;
+    const px=x*CELL, py=y*CELL;
+    ctx.strokeStyle=`rgba(80,200,80,${0.12+Math.sin(time*0.04+x+y)*0.04})`;
+    ctx.lineWidth=1;
+    for (let i=0;i<2;i++) {
+      const gx=px+6+i*14, gy=py+CELL-3;
+      const sway=Math.sin(time*0.06+x+i)*2;
+      ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx+sway,gy-5); ctx.stroke();
+    }
+  }
+
+  // --- Flowers around the garden ---
+  const flowers = [
+    {x:2,y:3,c:'#ff6688'},{x:12,y:3,c:'#ffaa44'},
+    {x:1,y:8,c:'#ff88cc'},{x:13,y:8,c:'#88ccff'},
+    {x:2,y:14,c:'#ffff66'},{x:12,y:14,c:'#cc88ff'},
+    {x:1,y:5,c:'#ff99aa'},{x:13,y:12,c:'#aaddff'},
+    {x:3,y:13,c:'#ffbb44'},{x:11,y:13,c:'#dd88ff'},
+  ];
+  for (const f of flowers) {
+    const fx=f.x*CELL+CELL/2, fy=f.y*CELL+CELL-8;
+    const sway=Math.sin(time*0.05+f.x)*1.5;
+    ctx.strokeStyle='#44aa44'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(fx,fy+6); ctx.lineTo(fx+sway,fy); ctx.stroke();
+    ctx.fillStyle=f.c;
+    for (let p=0;p<5;p++) {
+      const a=(Math.PI*2/5)*p+time*0.02;
+      ctx.beginPath();
+      ctx.arc(fx+sway+Math.cos(a)*3,fy+Math.sin(a)*3,2,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle='#ffee55';
+    ctx.beginPath(); ctx.arc(fx+sway,fy,2,0,Math.PI*2); ctx.fill();
+  }
+
+  // --- Pool border (stone deck) ---
+  ctx.strokeStyle='rgba(180,170,150,0.5)'; ctx.lineWidth=2;
+  const poolL=4*CELL, poolT=7*CELL, poolR=11*CELL, poolB=12*CELL;
+  ctx.strokeRect(poolL-2, poolT-2, poolR-poolL+4, poolB-poolT+4);
+  // Pool edge tiles (lighter gray border)
+  ctx.fillStyle='rgba(200,195,180,0.15)';
+  ctx.fillRect(poolL-CELL/4, poolT-CELL/4, poolR-poolL+CELL/2, CELL/4); // top edge
+  ctx.fillRect(poolL-CELL/4, poolB, poolR-poolL+CELL/2, CELL/4); // bottom edge
+  ctx.fillRect(poolL-CELL/4, poolT, CELL/4, poolB-poolT); // left edge
+  ctx.fillRect(poolR, poolT, CELL/4, poolB-poolT); // right edge
+
+  // --- Big house at top center ---
+  const hcx=pcx*CELL+CELL/2, hcy=1.5*CELL;
+  const hw=CELL*3, hh=CELL*1.5;
+  // House body
+  ctx.fillStyle='#9B7924';
+  ctx.fillRect(hcx-hw/2, hcy-hh/4+2, hw, hh/2+6);
+  // Roof (bigger triangle)
+  ctx.fillStyle='#cc4444';
+  ctx.beginPath();
+  ctx.moveTo(hcx-hw/2-6, hcy-hh/4+4);
+  ctx.lineTo(hcx, hcy-hh/2-8);
+  ctx.lineTo(hcx+hw/2+6, hcy-hh/4+4);
+  ctx.fill();
+  // Door
+  ctx.fillStyle='#5a3000';
+  ctx.fillRect(hcx-6, hcy+4, 12, hh/3);
+  ctx.fillStyle='#ffd700';
+  ctx.beginPath(); ctx.arc(hcx+3,hcy+12,2,0,Math.PI*2); ctx.fill();
+  // Windows (two on each side)
+  ctx.fillStyle='rgba(255,255,150,0.7)';
+  ctx.fillRect(hcx-hw/2+8, hcy-2, 10, 10);
+  ctx.fillRect(hcx+hw/2-18, hcy-2, 10, 10);
+  // Window cross bars
+  ctx.strokeStyle='#5a3000'; ctx.lineWidth=1;
+  for (const wx of [hcx-hw/2+13, hcx+hw/2-13]) {
+    ctx.beginPath(); ctx.moveTo(wx,hcy-2); ctx.lineTo(wx,hcy+8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(wx-5,hcy+3); ctx.lineTo(wx+5,hcy+3); ctx.stroke();
+  }
+  // Chimney
+  ctx.fillStyle='#884422';
+  ctx.fillRect(hcx+hw/3, hcy-hh/2-6, 8, 12);
+  // Smoke
+  for (let i=0;i<3;i++) {
+    const sx=hcx+hw/3+4+Math.sin(time*0.03+i*2)*3;
+    const sy=hcy-hh/2-10-i*6+Math.sin(time*0.04+i)*2;
+    ctx.globalAlpha=0.2-i*0.05;
+    ctx.fillStyle='rgba(200,200,220,0.5)';
+    ctx.beginPath(); ctx.arc(sx,sy,3+i,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // Warm light glow
+  const lightPulse=0.12+Math.sin(time*0.06)*0.04;
+  const lGrd=ctx.createRadialGradient(hcx,hcy,0,hcx,hcy,CELL*3);
+  lGrd.addColorStop(0,`rgba(255,220,100,${lightPulse})`);
+  lGrd.addColorStop(1,'rgba(255,220,100,0)');
+  ctx.fillStyle=lGrd; ctx.beginPath(); ctx.arc(hcx,hcy,CELL*3,0,Math.PI*2); ctx.fill();
+
+  // --- Sun (top-right) ---
+  const sunX=(pcx+4)*CELL, sunY=0.6*CELL;
+  const sunPulse=Math.sin(time*0.04)*2;
+  ctx.globalAlpha=0.15;
+  const sGrd=ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,CELL*2);
+  sGrd.addColorStop(0,'rgba(255,255,100,0.5)'); sGrd.addColorStop(1,'rgba(255,255,100,0)');
+  ctx.fillStyle=sGrd; ctx.beginPath(); ctx.arc(sunX,sunY,CELL*2,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.fillStyle='#ffdd00';
+  ctx.beginPath(); ctx.arc(sunX,sunY,10+sunPulse,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,220,50,0.4)'; ctx.lineWidth=1.5;
+  for (let i=0;i<8;i++) {
+    const a=(Math.PI*2/8)*i+time*0.02;
+    ctx.beginPath();
+    ctx.moveTo(sunX+Math.cos(a)*14,sunY+Math.sin(a)*14);
+    ctx.lineTo(sunX+Math.cos(a)*(20+sunPulse),sunY+Math.sin(a)*(20+sunPulse));
+    ctx.stroke();
+  }
+
+  // --- Swimming effects ---
+  if (heroSwimming) drawSwimmingEffect(hero);
+  if (witchSwimming) drawSwimmingEffect(witch);
+
+  ctx.restore();
+}
+
+function drawSwimmingEffect(entity) {
+  const cx=entity.drawX+CELL/2, cy=entity.drawY+CELL/2;
+  // Bobbing circle (water ring)
+  const bob=Math.sin(time*0.15)*3;
+  ctx.strokeStyle='rgba(150,220,255,0.5)'; ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy+bob, CELL*0.4, CELL*0.25, 0, 0, Math.PI*2);
+  ctx.stroke();
+  // Ripple rings expanding outward
+  for (let r=0;r<2;r++) {
+    const radius = ((time*2+r*40)%80)/80 * CELL*0.6;
+    const alpha = Math.max(0, 0.3 - radius/(CELL*0.6)*0.3);
+    ctx.strokeStyle=`rgba(150,220,255,${alpha})`; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
+  }
+  // Swim timer bar near character
+  const swimming = (entity===hero) ? heroSwimming : witchSwimming;
+  const timer = (entity===hero) ? heroSwimTimer : witchSwimTimer;
+  if (swimming && timer > 0) {
+    const barW=CELL*1.2, barH=5;
+    const bx=cx-barW/2, by=entity.drawY-10;
+    const pct=timer/SWIM_TIME;
+    // Background
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(bx,by,barW,barH);
+    // Fill (green → yellow → red)
+    const r=pct>0.5?Math.floor(255*(1-pct)*2):255;
+    const g=pct>0.5?255:Math.floor(255*pct*2);
+    ctx.fillStyle=`rgb(${r},${g},50)`;
+    ctx.fillRect(bx,by,barW*pct,barH);
+    // Seconds text
+    ctx.font='bold 9px Georgia'; ctx.textAlign='center';
+    ctx.fillStyle='#fff';
+    ctx.fillText(Math.ceil(timer/60)+'s',cx,by-2);
+  }
+}
 function drawWeb(web) {
   const cx=web.x*CELL+CELL/2, cy=web.y*CELL+CELL/2;
   const sup=web.isSuper;
@@ -1511,20 +1866,30 @@ function drawUI() {
   // --- HUD background strip (prevents crown clipping into timer) ---
   ctx.fillStyle='rgba(7,0,15,0.85)'; ctx.fillRect(0,0,MAP_W*CELL,30);
 
-  // --- TIMER (top center) ---
-  const sec=Math.ceil(gameTimer/60);
-  const timerPaused = (state===S.PRINCESS_TRAPPED);
-  const tCol = timerPaused ? '#aa88ff' : sec<=15 ? (Math.floor(time/15)%2===0?'#ff3333':'#ff8800') : '#fff';
-  ctx.font='bold 18px Georgia'; ctx.textAlign='center';
-  ctx.fillStyle=tCol; ctx.strokeStyle='#000'; ctx.lineWidth=3;
-  const tText = timerPaused ? `⏸️ ${sec}s` : `⏱️ ${sec}s`;
-  ctx.strokeText(tText,MAP_W*CELL/2,18); ctx.fillText(tText,MAP_W*CELL/2,18);
+  if (poolLevel) {
+    // --- POOL LEVEL HUD ---
+    ctx.font='bold 16px Georgia'; ctx.textAlign='center';
+    ctx.fillStyle='#88ddff'; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+    ctx.strokeText('🏠 Run to the house!',MAP_W*CELL/2,18);
+    ctx.fillText('🏠 Run to the house!',MAP_W*CELL/2,18);
+    // Thin decorative bar
+    ctx.fillStyle='rgba(100,200,255,0.3)'; ctx.fillRect(20,24,MAP_W*CELL-40,5);
+  } else {
+    // --- TIMER (top center) ---
+    const sec=Math.ceil(gameTimer/60);
+    const timerPaused = (state===S.PRINCESS_TRAPPED);
+    const tCol = timerPaused ? '#aa88ff' : sec<=15 ? (Math.floor(time/15)%2===0?'#ff3333':'#ff8800') : '#fff';
+    ctx.font='bold 18px Georgia'; ctx.textAlign='center';
+    ctx.fillStyle=tCol; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+    const tText = timerPaused ? `⏸️ ${sec}s` : `⏱️ ${sec}s`;
+    ctx.strokeText(tText,MAP_W*CELL/2,18); ctx.fillText(tText,MAP_W*CELL/2,18);
 
-  // Timer bar
-  const barW=MAP_W*CELL-40, barPct=gameTimer/GAME_TIME;
-  ctx.fillStyle='rgba(30,15,50,0.7)'; ctx.fillRect(20,24,barW,5);
-  ctx.fillStyle=sec<=15?'#ff3333':sec<=30?'#ffaa00':'#00cc88';
-  ctx.fillRect(20,24,barW*barPct,5);
+    // Timer bar
+    const barW=MAP_W*CELL-40, barPct=gameTimer/GAME_TIME;
+    ctx.fillStyle='rgba(30,15,50,0.7)'; ctx.fillRect(20,24,barW,5);
+    ctx.fillStyle=sec<=15?'#ff3333':sec<=30?'#ffaa00':'#00cc88';
+    ctx.fillRect(20,24,barW*barPct,5);
+  }
 
   // --- HERO stats (left) ---
   ctx.textAlign='left'; ctx.font='bold 13px Georgia';
@@ -1932,7 +2297,11 @@ function drawInstructions() {
   ctx.textAlign='center';
   ctx.font='bold 14px Georgia'; ctx.fillStyle='#ff8800';
   ctx.fillText(`⏱️ You have ${GAME_TIME/60} seconds!`,cx,y);
-  y+=30;
+  y+=22;
+  // Pool level hint
+  ctx.font='12px Georgia'; ctx.fillStyle='#88ddff';
+  ctx.fillText('🏊 Watch out for the pool at the end!',cx,y);
+  y+=28;
 
   ctx.font='14px Georgia';
   ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
@@ -2006,14 +2375,23 @@ function drawEndScreen() {
     ctx.strokeText('👑 PRINCESS WINS! 👑',cx,cy-40);
     ctx.fillText('👑 PRINCESS WINS! 👑',cx,cy-40);
     ctx.font='15px Georgia'; ctx.fillStyle='#ffaadd';
-    ctx.fillText('She made it home! ⭐',cx,cy+5);
+    if (poolLoseReason==='witch_drowned') ctx.fillText('The witch fell in the pool! 🏊',cx,cy+5);
+    else if (poolLevel) ctx.fillText('She made it home! 🏠⭐',cx,cy+5);
+    else ctx.fillText('She made it home! ⭐',cx,cy+5);
   } else {
     ctx.font='bold 28px Georgia'; ctx.fillStyle='#ff8800';
     ctx.strokeStyle='#000'; ctx.lineWidth=4;
-    ctx.strokeText('⏰ WITCH WINS! ⏰',cx,cy-40);
-    ctx.fillText('⏰ WITCH WINS! ⏰',cx,cy-40);
-    ctx.font='15px Georgia'; ctx.fillStyle='#ffcc88';
-    ctx.fillText('Time ran out! Try again!',cx,cy+5);
+    if (poolLoseReason==='hero_drowned') {
+      ctx.strokeText('🏊 SPLASH! 🏊',cx,cy-40);
+      ctx.fillText('🏊 SPLASH! 🏊',cx,cy-40);
+      ctx.font='15px Georgia'; ctx.fillStyle='#88ccff';
+      ctx.fillText('Splish splash! Try again! 🌊',cx,cy+5);
+    } else {
+      ctx.strokeText('⏰ WITCH WINS! ⏰',cx,cy-40);
+      ctx.fillText('⏰ WITCH WINS! ⏰',cx,cy-40);
+      ctx.font='15px Georgia'; ctx.fillStyle='#ffcc88';
+      ctx.fillText('Time ran out! Try again!',cx,cy+5);
+    }
   }
 
   if (endTimer>90) {
@@ -2311,9 +2689,19 @@ function updateAIPrincess() {
 
 function updateAI() {
   if (gameMode !== '1p') return;
-  if (state !== S.PLAYING && state !== S.HERO_FREED && state !== S.PRINCESS_TRAPPED) return;
+  if (state !== S.PLAYING && state !== S.HERO_FREED && state !== S.PRINCESS_TRAPPED && state !== S.POOL_LEVEL) return;
   clearAiInputs();
   aiTimer++;
+
+  if (state === S.POOL_LEVEL) {
+    // Pool level AI
+    if (playerRole === 'witch') {
+      updateAIPrincessPool();
+    } else {
+      updateAIWitchPool();
+    }
+    return;
+  }
 
   if (playerRole === 'witch') {
     // Player controls witch, AI controls princess
@@ -2335,6 +2723,137 @@ function updateAI() {
         break;
     }
   }
+}
+
+// ===================== POOL LEVEL AI =====================
+function bfsAvoidWater(sx, sy, tx, ty) {
+  // BFS that avoids POOL_WATER tiles (for AI pathfinding)
+  if (sx===tx && sy===ty) return [];
+  const visited = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(false));
+  const parent = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(null));
+  const queue = [{x:sx, y:sy}];
+  visited[sy][sx] = true;
+  const dirs = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const d of dirs) {
+      const nx=cur.x+d.dx, ny=cur.y+d.dy;
+      if (nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) continue;
+      if (visited[ny][nx]) continue;
+      const t=map[ny][nx];
+      if (t===WALL||t===POOL_WATER) continue; // avoid water!
+      visited[ny][nx] = true;
+      parent[ny][nx] = {x:cur.x, y:cur.y};
+      if (nx===tx && ny===ty) {
+        const path = [];
+        let cx=tx, cy=ty;
+        while (cx!==sx || cy!==sy) {
+          path.unshift({x:cx, y:cy});
+          const p = parent[cy][cx];
+          cx=p.x; cy=p.y;
+        }
+        return path;
+      }
+      queue.push({x:nx, y:ny});
+    }
+  }
+  return [];
+}
+
+function bfsToNearestEdge(sx, sy) {
+  // BFS from water tile to nearest non-water walkable tile
+  const visited = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(false));
+  const parent = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(null));
+  const queue = [{x:sx, y:sy}];
+  visited[sy][sx] = true;
+  const dirs = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const d of dirs) {
+      const nx=cur.x+d.dx, ny=cur.y+d.dy;
+      if (nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) continue;
+      if (visited[ny][nx]) continue;
+      const t=map[ny][nx];
+      if (t===WALL) continue;
+      visited[ny][nx] = true;
+      parent[ny][nx] = {x:cur.x, y:cur.y};
+      if (t!==POOL_WATER) {
+        // Found an edge tile!
+        const path = [];
+        let cx=nx, cy=ny;
+        while (cx!==sx || cy!==sy) {
+          path.unshift({x:cx, y:cy});
+          const p = parent[cy][cx];
+          cx=p.x; cy=p.y;
+        }
+        return path;
+      }
+      queue.push({x:nx, y:ny});
+    }
+  }
+  return [];
+}
+
+function aiFollowPath(entity, path, isHero) {
+  if (path.length === 0) return;
+  const next = path[0];
+  const dx = next.x - entity.x, dy = next.y - entity.y;
+  if (dx===1) inputState.ai[isHero?'ArrowRight':'KeyD'] = true;
+  else if (dx===-1) inputState.ai[isHero?'ArrowLeft':'KeyA'] = true;
+  else if (dy===1) inputState.ai[isHero?'ArrowDown':'KeyS'] = true;
+  else if (dy===-1) inputState.ai[isHero?'ArrowUp':'KeyW'] = true;
+  if (entity.x===next.x && entity.y===next.y) path.shift();
+}
+
+function updateAIPrincessPool() {
+  // AI princess in pool level — navigate to house, avoid water
+  if (heroSwimming) {
+    // Swimming — mash toward nearest edge
+    aiPrincessTimer--;
+    if (aiPrincessTimer <= 0 || aiPrincessPath.length === 0) {
+      aiPrincessPath = bfsToNearestEdge(hero.x, hero.y);
+      aiPrincessTimer = 10;
+    }
+    aiFollowPath(hero, aiPrincessPath, true);
+    return;
+  }
+  // Navigate to house
+  aiPrincessTimer--;
+  if (aiPrincessTimer <= 0 || aiPrincessPath.length === 0) {
+    // Find HOME_TILE
+    let target = null;
+    for (let y=0;y<MAP_H&&!target;y++)
+      for (let x=0;x<MAP_W&&!target;x++)
+        if (map[y][x]===HOME_TILE) target={x,y};
+    if (target) aiPrincessPath = bfsAvoidWater(hero.x, hero.y, target.x, target.y);
+    aiPrincessTimer = randInt(15, 30);
+  }
+  aiFollowPath(hero, aiPrincessPath, true);
+  // Use superpower if stuck in web
+  if (heroSlowTimer > 0 && heroSuperPowers > 0) inputState.ai['ShiftLeft'] = true;
+}
+
+function updateAIWitchPool() {
+  // AI witch in pool level — try to block princess, place webs, avoid water
+  if (witchSwimming) {
+    // Swimming — mash toward nearest edge
+    aiTimer--;
+    if (aiTimer <= 0 || aiPath.length === 0) {
+      aiPath = bfsToNearestEdge(witch.x, witch.y);
+      aiTimer = 10;
+    }
+    aiFollowPath(witch, aiPath, false);
+    return;
+  }
+  // Move toward princess using water-avoiding BFS
+  aiTimer--;
+  if (aiTimer <= 0 || aiPath.length === 0) {
+    aiPath = bfsAvoidWater(witch.x, witch.y, hero.x, hero.y);
+    aiTimer = randInt(20, 40);
+  }
+  aiFollowPath(witch, aiPath, false);
+  // Place webs near narrow paths
+  aiPlaceWeb(0.5, 0.15, 15);
 }
 
 // ===================== MAIN LOOP =====================
@@ -2371,6 +2890,22 @@ function update() {
     for (const w of webs) w.age++;
     if (time%3===0) spawnParticle(witch.drawX+CELL/2+rand(-8,8),witch.drawY+CELL/2+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
     updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
+  } else if (state===S.POOL_LEVEL) {
+    // Pool level — garden with pool obstacle
+    if (!poolIntroShown) {
+      poolIntroShown=true;
+      messageText='🏠 Run to the house! Avoid the pool!';
+      messageAlpha=2;
+    }
+    updateSlowTimer(); updateSuperWebWarning();
+    handleMovement();
+    checkPoolCollisions(); updateSwimming();
+    if (state===S.POOL_LEVEL) {
+      for (const w of webs) w.age++;
+      if (!witchSwimming && time%3===0)
+        spawnParticle(witch.drawX+CELL/2+rand(-8,8),witch.drawY+CELL/2+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
+      updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
+    }
   }
 }
 
@@ -2381,11 +2916,16 @@ function render() {
   else if (state===S.STORY_INTRO) drawStoryIntro();
   else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) drawEndScreen();
   else {
-    applyShake(); drawMap(); drawCastleDecorations(); drawRealWorldDecorations(); drawTrails();
+    applyShake(); drawMap();
+    if (!poolLevel) { drawCastleDecorations(); drawRealWorldDecorations(); }
+    else { drawPoolDecorations(); }
+    drawTrails();
     for (const w of webs) drawWeb(w);
     drawParticles();
-    drawHero(hero.drawX,hero.drawY);
-    drawWitch(witch.drawX,witch.drawY);
+    const heroBob = heroSwimming ? Math.sin(time*0.15)*4 : 0;
+    const witchBob = witchSwimming ? Math.sin(time*0.15+1)*4 : 0;
+    drawHero(hero.drawX,hero.drawY+heroBob);
+    drawWitch(witch.drawX,witch.drawY+witchBob);
     drawUI();
   }
   ctx.restore();
