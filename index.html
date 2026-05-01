@@ -64,8 +64,9 @@ canvas {
 .tc-right { flex-direction: row-reverse; }
 .tc-dpad {
   display: grid;
-  grid-template: repeat(3, 50px) / repeat(3, 50px);
+  grid-template: repeat(3, 48px) / repeat(3, 48px);
   gap: 3px;
+  pointer-events: none;
 }
 .tc-dpad-btn {
   display: flex;
@@ -246,14 +247,15 @@ let castleFightPresses = 0;
 
 // ===================== CANVAS SIZING =====================
 function resizeCanvas() {
-  canvas.width = MAP_W * CELL;
-  canvas.height = MAP_H * CELL;
+  const w = MAP_W * CELL, h = MAP_H * CELL;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
   const pad = isTouchDevice ? 8 : 16;
-  const sx = (window.innerWidth - pad) / canvas.width;
-  const sy = ((window.visualViewport?.height || window.innerHeight) - pad) / canvas.height;
+  const sx = (window.innerWidth - pad) / w;
+  const sy = ((window.visualViewport?.height || window.innerHeight) - pad) / h;
   const scale = Math.min(sx, sy, 3.5);
-  canvas.style.width = Math.floor(canvas.width * scale) + 'px';
-  canvas.style.height = Math.floor(canvas.height * scale) + 'px';
+  canvas.style.width = Math.floor(w * scale) + 'px';
+  canvas.style.height = Math.floor(h * scale) + 'px';
 }
 window.addEventListener('resize', resizeCanvas);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
@@ -478,8 +480,10 @@ function handleTitleClick(pos) {
   return false;
 }
 
+let lastTouchTime = 0;
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
+  lastTouchTime = Date.now();
   initAudio();
   const pos = getCanvasTapPos(e);
   if (state === S.TITLE && handleTitleClick(pos)) return;
@@ -489,6 +493,7 @@ canvas.addEventListener('touchstart', e => {
 }, { passive: false });
 
 canvas.addEventListener('click', e => {
+  if (Date.now() - lastTouchTime < 600) return;
   initAudio();
   const pos = getCanvasTapPos(e);
   if (state === S.TITLE && handleTitleClick(pos)) return;
@@ -513,28 +518,34 @@ function setupTouchControl(el) {
     }
   }, { passive: false });
 
+  function releaseTouch(touch) {
+    const info = activeTouches.get(touch.identifier);
+    if (!info) return;
+    activeTouches.delete(touch.identifier);
+    const stillHeld = [...activeTouches.values()].some(v => v.key === info.key);
+    if (!stillHeld) {
+      inputState.touch[info.key] = false;
+      info.element.classList.remove('active');
+    }
+  }
+
   el.addEventListener('touchend', e => {
     e.preventDefault();
-    for (const touch of e.changedTouches) {
-      const info = activeTouches.get(touch.identifier);
-      if (info) {
-        inputState.touch[info.key] = false;
-        info.element.classList.remove('active');
-        activeTouches.delete(touch.identifier);
-      }
-    }
+    for (const touch of e.changedTouches) releaseTouch(touch);
   }, { passive: false });
 
   el.addEventListener('touchcancel', e => {
+    for (const touch of e.changedTouches) releaseTouch(touch);
+  });
+
+  el.addEventListener('touchmove', e => {
     for (const touch of e.changedTouches) {
       const info = activeTouches.get(touch.identifier);
-      if (info) {
-        inputState.touch[info.key] = false;
-        info.element.classList.remove('active');
-        activeTouches.delete(touch.identifier);
-      }
+      if (!info || info.element !== el) continue;
+      const t = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (t !== el && !el.contains(t)) releaseTouch(touch);
     }
-  });
+  }, { passive: true });
 }
 
 // Bind all touch-control elements
@@ -563,9 +574,11 @@ function updateTouchControlsVisibility() {
     } else if (playerRole === 'witch') {
       tcPrincess.style.display = 'none';
       tcWitch.style.display = 'flex';
+      tcWitch.style.marginLeft = 'auto';
     } else {
       tcPrincess.style.display = 'flex';
       tcWitch.style.display = 'none';
+      tcWitch.style.marginLeft = '';
     }
   } else {
     touchControls.classList.remove('visible');
@@ -581,7 +594,7 @@ function canMove(x,y,isHero) {
   const t=map[y][x];
   if (t===WALL) return false;
   if (t===REAL_DOOR&&!doorUnlocked.real) return false;
-  if (!isHero&&state===S.PLAYING&&(t===PRINCESS_DOOR||t===PRINCESS_FLOOR)) return false;
+  if (!isHero&&(t===PRINCESS_DOOR||t===PRINCESS_FLOOR)) return false;
   if (!isHero&&(t===REAL_DOOR||t===REAL_WORLD)) return false;
   return true;
 }
@@ -881,7 +894,7 @@ function drawMap() {
   // Zone labels
   ctx.save(); ctx.font='bold 11px Georgia'; ctx.textAlign='center';
   const midX=Math.floor(MAP_W/2)*CELL+CELL/2;
-  ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.fillText('⭐ REAL WORLD ⭐',midX,1.5*CELL+5);
+  ctx.fillStyle='rgba(255,215,0,0.5)'; ctx.fillText('⭐ REAL WORLD ⭐',midX,CELL-4);
   ctx.fillStyle='rgba(255,100,200,0.5)'; ctx.fillText('👑 PRINCESS CASTLE 👑',midX,4.5*CELL+5);
   ctx.fillStyle='rgba(150,50,255,0.4)'; ctx.fillText('🕷️ WITCH LABYRINTH 🕷️',midX,(ROOM_ROWS+1)*CELL-5);
   ctx.restore();
@@ -1366,11 +1379,6 @@ function drawWitch(x,y) {
   ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(0,0,CELL*1.1,0,Math.PI*2); ctx.fill();
   ctx.globalAlpha=1;
 
-  // Green smoke wisps
-  if (time%3===0) {
-    spawnParticle(cx+rand(-8,8),cy+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
-  }
-
   // --- ROBE (bigger, flowing, layered) ---
   const capeWave=Math.sin(time*0.1)*2;
   // Cape back (dark, wider)
@@ -1500,6 +1508,9 @@ function drawParticles() {
 function drawUI() {
   ctx.save();
 
+  // --- HUD background strip (prevents crown clipping into timer) ---
+  ctx.fillStyle='rgba(7,0,15,0.85)'; ctx.fillRect(0,0,MAP_W*CELL,30);
+
   // --- TIMER (top center) ---
   const sec=Math.ceil(gameTimer/60);
   const timerPaused = (state===S.PRINCESS_TRAPPED);
@@ -1550,7 +1561,7 @@ function drawUI() {
 
     // Dimming background
     ctx.save();
-    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(0,0,MAP_W*CELL,MAP_H*CELL);
+    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(0,32,MAP_W*CELL,MAP_H*CELL-32);
 
     ctx.fillStyle='rgba(40,10,50,0.95)'; ctx.strokeStyle='#ff69b4'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,10); ctx.fill(); ctx.stroke();
@@ -1685,12 +1696,15 @@ function drawTitle() {
     ctx.fillText('🧙 Witch', cx+62, roleY+4);
   }
 
+  // Push start/credit text below the extra rows when 1P controls are visible
+  const startY = (gameMode === '1p') ? cy+200 : cy+155;
+  const creditY = startY + 20;
   ctx.font='14px Georgia';
   ctx.fillStyle=`rgba(200,180,255,${0.5+Math.sin(time*0.08)*0.3})`;
-  ctx.fillText(isTouchDevice ? 'Tap to start' : 'Press SPACE to start',cx,cy+155);
+  ctx.fillText(isTouchDevice ? 'Tap to start' : 'Press SPACE to start',cx,startY);
 
   ctx.font='11px Georgia'; ctx.fillStyle='rgba(150,130,200,0.5)';
-  ctx.fillText('Designed by Petra ✨',cx, cy+175);
+  ctx.fillText('Designed by Petra ✨',cx, creditY);
   ctx.restore();
 }
 
@@ -1903,7 +1917,8 @@ function drawStoryIntro() {
 // ===================== END SCREEN =====================
 function drawEndScreen() {
   endTimer++;
-  ctx.fillStyle='rgba(7,0,15,0.04)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = endTimer < 2 ? '#07000f' : 'rgba(7,0,15,0.18)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
   const cx=canvas.width/2, cy=canvas.height/2;
 
   if (endTimer%4===0) {
@@ -2172,16 +2187,14 @@ function bfsPathHero(sx, sy, tx, ty) {
 }
 
 function findPrincessTarget() {
-  // Princess AI navigates toward the goal depending on game state
   if (state === S.HERO_FREED) {
-    // Find the real world door or any real world tile
     for (let y=0;y<MAP_H;y++) for (let x=0;x<MAP_W;x++) {
       if (map[y][x]===REAL_WORLD) return {x,y};
     }
   }
-  // Default: head toward the princess door (castle)
-  for (let y=0;y<MAP_H;y++) for (let x=0;x<MAP_W;x++) {
-    if (map[y][x]===PRINCESS_DOOR) return {x,y};
+  // Target a PRINCESS_FLOOR tile to trigger the castle trap
+  for (let y=MAP_H-1;y>=0;y--) for (let x=0;x<MAP_W;x++) {
+    if (map[y][x]===PRINCESS_FLOOR) return {x,y};
   }
   return null;
 }
@@ -2282,6 +2295,8 @@ function update() {
     updateTimer(); updateSlowTimer(); updateSuperWebWarning();
     handleMovement(); checkCollisions();
     if (state===S.PLAYING||state===S.HERO_FREED) {
+      for (const w of webs) w.age++;
+      if (time%3===0) spawnParticle(witch.drawX+CELL/2+rand(-8,8),witch.drawY+CELL/2+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
       updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
     }
   } else if (state===S.PRINCESS_TRAPPED) {
@@ -2290,6 +2305,8 @@ function update() {
     handleInput(witchKeys,witch,false);
     handleWebPlacement();
     updatePrincessState();
+    for (const w of webs) w.age++;
+    if (time%3===0) spawnParticle(witch.drawX+CELL/2+rand(-8,8),witch.drawY+CELL/2+rand(5,15),'rgba(0,200,80,0.3)',20,rand(-0.5,0.5),rand(-1,-0.3),2);
     updateDrawPositions(); updateTrails(); updateParticles(); spawnAmbientParticles();
   }
 }
@@ -2302,7 +2319,7 @@ function render() {
   else if (state===S.HERO_WINS||state===S.WITCH_WINS_TIME) drawEndScreen();
   else {
     applyShake(); drawMap(); drawCastleDecorations(); drawRealWorldDecorations(); drawTrails();
-    for (const w of webs) { w.age++; drawWeb(w); }
+    for (const w of webs) drawWeb(w);
     drawParticles();
     drawHero(hero.drawX,hero.drawY);
     drawWitch(witch.drawX,witch.drawY);
