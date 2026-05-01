@@ -1,6 +1,6 @@
 // Service Worker for Petra's Game
 // Network-first strategy: always check for updates, fall back to cache offline
-const CACHE_NAME = 'petra-game-v4.4';
+const CACHE_NAME = 'petra-game-v4.5';
 const ASSETS = [
   '/',
   '/index.html',

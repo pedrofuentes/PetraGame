@@ -1729,18 +1729,18 @@ function drawInstructions() {
   if (isTouchDevice) {
     // === TOUCH INSTRUCTIONS ===
     ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
-    ctx.fillText('👑 Princess',cx,y); y+=6;
+    ctx.fillText('👑 Princess',cx,y); y+=8;
     ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-    ctx.fillText('"I want to go home!"',cx,y+14); y+=34;
+    ctx.fillText('"I want to go home!"',cx,y+14); y+=38;
 
     // D-pad visual
     ctx.font='11px Georgia'; ctx.textAlign='left';
-    const dx=cx-55;
-    drawKeyIcon(dx+20,y,30,24,'▲','#ffd700');
+    const dx=cx-60;
+    drawKeyIcon(dx+30,y,30,24,'▲','#ffd700');
     drawKeyIcon(dx,y+28,30,24,'◀','#ffd700');
-    drawKeyIcon(dx+20,y+28,30,24,'▼','#ffd700');
-    drawKeyIcon(dx+40,y+28,30,24,'▶','#ffd700');
-    ctx.fillStyle='#ddc'; ctx.fillText('D-Pad (left side)',dx+80,y+22);
+    drawKeyIcon(dx+30,y+28,30,24,'▼','#ffd700');
+    drawKeyIcon(dx+60,y+28,30,24,'▶','#ffd700');
+    ctx.fillStyle='#ddc'; ctx.fillText('D-Pad (left side)',dx+100,y+22);
 
     // Blast button visual
     drawKeyIcon(dx+5,y+62,50,30,'✨','#ffd700');
@@ -1753,18 +1753,18 @@ function drawInstructions() {
       // === WITCH (2P touch) ===
       ctx.textAlign='center';
       ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
-      ctx.fillText('🧙 Witch (Player 2)',cx,y); y+=6;
+      ctx.fillText('🧙 Witch (Player 2)',cx,y); y+=8;
       ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=34;
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=38;
 
-      const wx=cx-55;
+      const wx=cx-60;
       ctx.textAlign='left';
-      drawKeyIcon(wx+20,y,30,24,'▲','#00ff88');
+      drawKeyIcon(wx+30,y,30,24,'▲','#00ff88');
       drawKeyIcon(wx,y+28,30,24,'◀','#00ff88');
-      drawKeyIcon(wx+20,y+28,30,24,'▼','#00ff88');
-      drawKeyIcon(wx+40,y+28,30,24,'▶','#00ff88');
+      drawKeyIcon(wx+30,y+28,30,24,'▼','#00ff88');
+      drawKeyIcon(wx+60,y+28,30,24,'▶','#00ff88');
       ctx.fillStyle='#ddc'; ctx.font='11px Georgia';
-      ctx.fillText('D-Pad (right side)',wx+80,y+22);
+      ctx.fillText('D-Pad (right side)',wx+100,y+22);
 
       drawKeyIcon(wx,y+62,30,24,'🕸️','#aaaaff');
       ctx.fillStyle='#ccccff'; ctx.font='11px Georgia';
@@ -1773,23 +1773,23 @@ function drawInstructions() {
       drawKeyIcon(wx,y+92,30,24,'☠','#00ff55');
       ctx.fillStyle='#00ff55';
       ctx.fillText(`SUPER (×${MAX_SUPER_WEBS})`,wx+40,y+108);
-      y+=128;
+      y+=140;
     } else if (playerRole === 'witch') {
       // 1P playing as witch: show witch controls + AI princess info
       ctx.textAlign='center';
       ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
-      ctx.fillText('🧙 Witch (You!)',cx,y); y+=6;
+      ctx.fillText('🧙 Witch (You!)',cx,y); y+=8;
       ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=34;
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=38;
 
-      const wx=cx-55;
+      const wx=cx-60;
       ctx.textAlign='left';
-      drawKeyIcon(wx+20,y,30,24,'▲','#00ff88');
+      drawKeyIcon(wx+30,y,30,24,'▲','#00ff88');
       drawKeyIcon(wx,y+28,30,24,'◀','#00ff88');
-      drawKeyIcon(wx+20,y+28,30,24,'▼','#00ff88');
-      drawKeyIcon(wx+40,y+28,30,24,'▶','#00ff88');
+      drawKeyIcon(wx+30,y+28,30,24,'▼','#00ff88');
+      drawKeyIcon(wx+60,y+28,30,24,'▶','#00ff88');
       ctx.fillStyle='#ddc'; ctx.font='11px Georgia';
-      ctx.fillText('D-Pad',wx+80,y+22);
+      ctx.fillText('D-Pad',wx+100,y+22);
 
       drawKeyIcon(wx+5,y+62,50,30,'🕸️','#aaaaff');
       ctx.fillStyle='#ccccff'; ctx.font='11px Georgia';
@@ -1819,53 +1819,116 @@ function drawInstructions() {
       y+=40;
     }
   } else {
-    // === KEYBOARD INSTRUCTIONS (original) ===
-    // === PRINCESS ===
-    ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
-    ctx.fillText('👑 Princess',cx,y); y+=6;
-    ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-    ctx.fillText('"I want to go home!"',cx,y+14); y+=32;
+    // === KEYBOARD INSTRUCTIONS ===
+    if (gameMode === '2p') {
+      // === PRINCESS ===
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
+      ctx.fillText('👑 Princess',cx,y); y+=8;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"I want to go home!"',cx,y+14); y+=38;
 
-    const kx=cx-55, ky=y;
-    drawKeyIcon(kx+20,ky,30,24,'↑','#ffd700');
-    drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
-    drawKeyIcon(kx+20,ky+28,30,24,'↓','#ffd700');
-    drawKeyIcon(kx+40,ky+28,30,24,'→','#ffd700');
-    ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
-    ctx.fillText('Move',kx+80,ky+22);
-    drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
-    ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
-    ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
-    ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
-    ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
-    y+=110;
+      const kx=cx-60, ky=y;
+      drawKeyIcon(kx+30,ky,30,24,'↑','#ffd700');
+      drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
+      drawKeyIcon(kx+30,ky+28,30,24,'↓','#ffd700');
+      drawKeyIcon(kx+60,ky+28,30,24,'→','#ffd700');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('Move',kx+100,ky+22);
+      drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
+      ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
+      ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
+      ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
+      y+=110;
 
-    // === WITCH ===
-    ctx.textAlign='center';
-    ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
-    ctx.fillText('🧙 Witch',cx,y); y+=6;
-    ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
-    ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=32;
+      // === WITCH ===
+      ctx.textAlign='center';
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch',cx,y); y+=8;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=38;
 
-    const wx=cx-55, wy=y;
-    drawKeyIcon(wx+20,wy,30,24,'W','#00ff88');
-    drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
-    drawKeyIcon(wx+20,wy+28,30,24,'S','#00ff88');
-    drawKeyIcon(wx+40,wy+28,30,24,'D','#00ff88');
-    ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
-    ctx.fillText('Move',wx+80,wy+22);
+      const wx=cx-60, wy=y;
+      drawKeyIcon(wx+30,wy,30,24,'W','#00ff88');
+      drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
+      drawKeyIcon(wx+30,wy+28,30,24,'S','#00ff88');
+      drawKeyIcon(wx+60,wy+28,30,24,'D','#00ff88');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('Move',wx+100,wy+22);
 
-    drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
-    ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
-    ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
+      drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
+      ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
 
-    drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
-    ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
-    ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
-    y+=128;
+      drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
+      ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
+      y+=140;
+    } else if (playerRole === 'witch') {
+      // 1P playing as witch: show witch keyboard controls + AI princess info
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch (You!)',cx,y); y+=8;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=38;
+
+      const wx=cx-60, wy=y;
+      drawKeyIcon(wx+30,wy,30,24,'W','#00ff88');
+      drawKeyIcon(wx,wy+28,30,24,'A','#00ff88');
+      drawKeyIcon(wx+30,wy+28,30,24,'S','#00ff88');
+      drawKeyIcon(wx+60,wy+28,30,24,'D','#00ff88');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('Move',wx+100,wy+22);
+
+      drawKeyIcon(wx,wy+62,30,24,'E','#aaaaff');
+      ctx.fillStyle='#ccccff'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText(`🕸️ Web (×${MAX_WEBS}) — slows`,wx+40,wy+78);
+
+      drawKeyIcon(wx,wy+92,30,24,'Q','#00ff55');
+      ctx.fillStyle='#00ff55'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText(`☠ SUPER (×${MAX_SUPER_WEBS}) — 4s trap!`,wx+40,wy+108);
+      y+=140;
+
+      ctx.textAlign='center';
+      ctx.font='bold 14px Georgia'; ctx.fillStyle='#ffd700';
+      ctx.fillText('👑 Princess (AI)',cx,y); y+=18;
+      ctx.font='11px Georgia'; ctx.fillStyle='rgba(200,180,255,0.6)';
+      ctx.fillText('She tries to escape on her own!',cx,y);
+      y+=30;
+    } else {
+      // 1P playing as princess: show princess keyboard controls + AI witch info
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#ffd700';
+      ctx.fillText('👑 Princess (You!)',cx,y); y+=8;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"I want to go home!"',cx,y+14); y+=38;
+
+      const kx=cx-60, ky=y;
+      drawKeyIcon(kx+30,ky,30,24,'↑','#ffd700');
+      drawKeyIcon(kx,ky+28,30,24,'←','#ffd700');
+      drawKeyIcon(kx+30,ky+28,30,24,'↓','#ffd700');
+      drawKeyIcon(kx+60,ky+28,30,24,'→','#ffd700');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('Move',kx+100,ky+22);
+      drawKeyIcon(kx,ky+62,70,24,'SHIFT','#ffd700');
+      ctx.fillStyle='#ffa'; ctx.font='11px Georgia'; ctx.textAlign='left';
+      ctx.fillText('✨ Magic Blast!',kx+80,ky+78);
+      ctx.fillStyle='#ddc'; ctx.font='10px Georgia';
+      ctx.fillText(`💎×${MAX_SUPERPOWERS} — destroys webs`,kx+80,ky+92);
+      y+=110;
+
+      ctx.textAlign='center';
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch (AI)',cx,y); y+=22;
+      ctx.font='12px Georgia'; ctx.fillStyle='#ddc';
+      const diffLabel = aiDifficulty==='easy' ? '🌸 Easy' : aiDifficulty==='medium' ? '⚔️ Medium' : '🔥 Hard';
+      ctx.fillText(`Difficulty: ${diffLabel}`,cx,y); y+=20;
+      ctx.font='11px Georgia'; ctx.fillStyle='rgba(200,180,255,0.6)';
+      ctx.fillText('The witch moves on her own!',cx,y);
+      y+=40;
+    }
   }
 
   // === TIMER ===
+  y+=8;
   ctx.textAlign='center';
   ctx.font='bold 14px Georgia'; ctx.fillStyle='#ff8800';
   ctx.fillText(`⏱️ You have ${GAME_TIME/60} seconds!`,cx,y);
