@@ -23,14 +23,25 @@ engine:
 # 🛡️ Safety & Content Rules
 # ─────────────────────────────────────────────
 safety:
-  max_violence: "none"        # "none" or "cartoon" (cartoon = bonking, bouncing, no blood)
-  scary_content: false        # Allow "spooky-cute" content? (silly witches, friendly ghosts — never truly scary)
+  # "none"    — no impact mechanics (collect/avoid only)
+  # "cartoon" — squash-bounce-poof allowed (DEFAULT — see AGENTS.md Rule #1 catalog)
+  # There is no third option. Realistic violence is never permitted.
+  max_violence: "cartoon"
+
+  # Controls dark/spooky theming:
+  #   "none"        — no spooky elements at all (pure cheerful: rainbows, puppies, sunshine)
+  #   "spooky_cute" — silly witches, friendly ghosts, cute monsters allowed (DEFAULT for ages 5+)
+  # NEVER allowed regardless: jumpscares, threatening imagery, horror tropes
+  spooky_level: "spooky_cute"
+
   monetization: false         # Any in-app purchases, ads, or premium content? (always false for kids)
   data_collection: false      # Any player data collection or analytics? (always false for kids)
   require_parent_approval:    # Features that need parent OK before implementing
-    - multiplayer
-    - online_features
-    - user_generated_content
+    - online_multiplayer          # Network play with strangers
+    - online_features             # Leaderboards, cloud saves, etc.
+    - user_generated_content      # Sharing, level editors
+  # Local couch multiplayer (2 kids same device) is ALLOWED by default.
+  # Ensure both players get celebration moments; loser never humiliated.
 
 # ─────────────────────────────────────────────
 # 🎨 Art & Visual Style
@@ -71,4 +82,4 @@ advanced:
   max_level_count: 10         # Maximum number of levels (scope control)
   max_character_count: 5      # Maximum unique characters (scope control)
   prototype_first: true       # Prioritize getting a playable prototype early
-  template_version: "1.2.0"   # Semantic version of the KidsGames template used
+  template_version: "1.3.0"   # Semantic version of the KidsGames template used
