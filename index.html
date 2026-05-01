@@ -224,6 +224,7 @@ const keys = new Proxy({}, {
 const isTouchDevice = navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches;
 let gameMode = isTouchDevice ? '1p' : '2p';  // default 1p on touch
 let aiDifficulty = 'easy';  // 'easy', 'medium', 'hard'
+let playerRole = 'princess'; // 'princess' or 'witch' (1p only)
 const touchControls = document.getElementById('touch-controls');
 const tcPrincess = document.getElementById('tc-princess');
 const tcWitch = document.getElementById('tc-witch');
@@ -418,6 +419,7 @@ function initGame() {
   castleFightPresses=0;
   // Reset AI state
   aiTimer=0; aiPath=[]; aiWebTimer=0; aiDecisionTimer=0; aiCurrentDir=null;
+  aiPrincessPath=[]; aiPrincessTimer=0; aiPrincessDir=null; aiPrincessSuperTimer=0;
   clearAiInputs();
   generateMaze();
 }
@@ -465,6 +467,12 @@ function handleTitleClick(pos) {
       if (pos.x >= startX && pos.x < startX + bw) { aiDifficulty = 'easy'; return true; }
       if (pos.x >= startX + bw + gap && pos.x < startX + bw * 2 + gap) { aiDifficulty = 'medium'; return true; }
       if (pos.x >= startX + bw * 2 + gap * 2 && pos.x < startX + bw * 3 + gap * 2) { aiDifficulty = 'hard'; return true; }
+    }
+    // Character selection buttons
+    const roleY = diffY + 32;
+    if (pos.y >= roleY - 12 && pos.y <= roleY + 12) {
+      if (pos.x >= cx - 120 && pos.x < cx) { playerRole = 'princess'; return true; }
+      if (pos.x >= cx && pos.x <= cx + 120) { playerRole = 'witch'; return true; }
     }
   }
   return false;
@@ -549,7 +557,16 @@ function updateTouchControlsVisibility() {
   const showControls = (state===S.PLAYING||state===S.HERO_FREED||state===S.PRINCESS_TRAPPED);
   if (showControls) {
     touchControls.classList.add('visible');
-    tcWitch.style.display = gameMode === '2p' ? 'flex' : 'none';
+    if (gameMode === '2p') {
+      tcPrincess.style.display = 'flex';
+      tcWitch.style.display = 'flex';
+    } else if (playerRole === 'witch') {
+      tcPrincess.style.display = 'none';
+      tcWitch.style.display = 'flex';
+    } else {
+      tcPrincess.style.display = 'flex';
+      tcWitch.style.display = 'none';
+    }
   } else {
     touchControls.classList.remove('visible');
   }
@@ -1646,6 +1663,26 @@ function drawTitle() {
       ctx.fillStyle = sel ? d.col : 'rgba(200,180,255,0.5)';
       ctx.fillText(d.label, bx+bw/2, diffY+4);
     }
+
+    // Character selection (play as princess or witch)
+    const roleY = diffY + 32;
+    ctx.font='bold 12px Georgia';
+    const isPrincess = playerRole === 'princess';
+    // Princess button
+    ctx.fillStyle = isPrincess ? 'rgba(255,200,0,0.2)' : 'rgba(40,20,60,0.5)';
+    ctx.strokeStyle = isPrincess ? '#ffd700' : 'rgba(200,150,255,0.3)';
+    ctx.lineWidth = isPrincess ? 2 : 1;
+    ctx.beginPath(); ctx.roundRect(cx-120, roleY-12, 115, 24, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = isPrincess ? '#ffd700' : 'rgba(200,180,255,0.5)';
+    ctx.fillText('👑 Princess', cx-62, roleY+4);
+    // Witch button
+    const isWitch = playerRole === 'witch';
+    ctx.fillStyle = isWitch ? 'rgba(0,255,100,0.2)' : 'rgba(40,20,60,0.5)';
+    ctx.strokeStyle = isWitch ? '#00ff88' : 'rgba(200,150,255,0.3)';
+    ctx.lineWidth = isWitch ? 2 : 1;
+    ctx.beginPath(); ctx.roundRect(cx+5, roleY-12, 115, 24, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = isWitch ? '#00ff88' : 'rgba(200,180,255,0.5)';
+    ctx.fillText('🧙 Witch', cx+62, roleY+4);
   }
 
   ctx.font='14px Georgia';
@@ -1723,8 +1760,40 @@ function drawInstructions() {
       ctx.fillStyle='#00ff55';
       ctx.fillText(`SUPER (×${MAX_SUPER_WEBS})`,wx+40,y+108);
       y+=128;
+    } else if (playerRole === 'witch') {
+      // 1P playing as witch: show witch controls + AI princess info
+      ctx.textAlign='center';
+      ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
+      ctx.fillText('🧙 Witch (You!)',cx,y); y+=6;
+      ctx.font='11px Georgia'; ctx.fillStyle='#ddc';
+      ctx.fillText('"The castle magic is mine!"',cx,y+14); y+=34;
+
+      const wx=cx-55;
+      ctx.textAlign='left';
+      drawKeyIcon(wx+20,y,30,24,'▲','#00ff88');
+      drawKeyIcon(wx,y+28,30,24,'◀','#00ff88');
+      drawKeyIcon(wx+20,y+28,30,24,'▼','#00ff88');
+      drawKeyIcon(wx+40,y+28,30,24,'▶','#00ff88');
+      ctx.fillStyle='#ddc'; ctx.font='11px Georgia';
+      ctx.fillText('D-Pad',wx+80,y+22);
+
+      drawKeyIcon(wx+5,y+62,50,30,'🕸️','#aaaaff');
+      ctx.fillStyle='#ccccff'; ctx.font='11px Georgia';
+      ctx.fillText(`Web (×${MAX_WEBS})`,wx+65,y+78);
+
+      drawKeyIcon(wx+5,y+92,50,30,'☠','#00ff55');
+      ctx.fillStyle='#00ff55';
+      ctx.fillText(`SUPER (×${MAX_SUPER_WEBS})`,wx+65,y+108);
+      y+=128;
+
+      ctx.textAlign='center';
+      ctx.font='bold 14px Georgia'; ctx.fillStyle='#ffd700';
+      ctx.fillText('👑 Princess (AI)',cx,y); y+=18;
+      ctx.font='11px Georgia'; ctx.fillStyle='rgba(200,180,255,0.6)';
+      ctx.fillText('She tries to escape on her own!',cx,y);
+      y+=30;
     } else {
-      // 1P: AI witch info
+      // 1P playing as princess: AI witch info
       ctx.textAlign='center';
       ctx.font='bold 16px Georgia'; ctx.fillStyle='#00ff88';
       ctx.fillText('🧙 Witch (AI)',cx,y); y+=22;
@@ -1885,12 +1954,17 @@ function applyShake() {
   }
 }
 
-// ===================== AI WITCH =====================
+// ===================== AI =====================
 let aiTimer = 0;
 let aiPath = [];
 let aiWebTimer = 0;
 let aiDecisionTimer = 0;
 let aiCurrentDir = null;
+// AI princess state
+let aiPrincessPath = [];
+let aiPrincessTimer = 0;
+let aiPrincessDir = null;
+let aiPrincessSuperTimer = 0;
 
 function clearAiInputs() {
   for (const k in inputState.ai) inputState.ai[k] = false;
@@ -2063,25 +2137,127 @@ function aiPlaceWeb(webChance, superChance, maxDist) {
   }
 }
 
+// ===================== AI PRINCESS =====================
+function bfsPathHero(sx, sy, tx, ty) {
+  // BFS using hero movement rules (can enter princess floor, real world, etc.)
+  if (sx===tx && sy===ty) return [];
+  const visited = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(false));
+  const parent = Array.from({length:MAP_H}, ()=>Array(MAP_W).fill(null));
+  const queue = [{x:sx, y:sy}];
+  visited[sy][sx] = true;
+  const dirs = [{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const d of dirs) {
+      const nx=cur.x+d.dx, ny=cur.y+d.dy;
+      if (nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) continue;
+      if (visited[ny][nx]) continue;
+      if (!canMove(nx, ny, true)) continue;
+      visited[ny][nx] = true;
+      parent[ny][nx] = {x:cur.x, y:cur.y};
+      if (nx===tx && ny===ty) {
+        const path = [];
+        let cx=tx, cy=ty;
+        while (cx!==sx || cy!==sy) {
+          path.unshift({x:cx, y:cy});
+          const p = parent[cy][cx];
+          cx=p.x; cy=p.y;
+        }
+        return path;
+      }
+      queue.push({x:nx, y:ny});
+    }
+  }
+  return [];
+}
+
+function findPrincessTarget() {
+  // Princess AI navigates toward the goal depending on game state
+  if (state === S.HERO_FREED) {
+    // Find the real world door or any real world tile
+    for (let y=0;y<MAP_H;y++) for (let x=0;x<MAP_W;x++) {
+      if (map[y][x]===REAL_WORLD) return {x,y};
+    }
+  }
+  // Default: head toward the princess door (castle)
+  for (let y=0;y<MAP_H;y++) for (let x=0;x<MAP_W;x++) {
+    if (map[y][x]===PRINCESS_DOOR) return {x,y};
+  }
+  return null;
+}
+
+function updateAIPrincess() {
+  if (state === S.PRINCESS_TRAPPED) {
+    // Mash shift to fight the castle spell
+    aiPrincessSuperTimer++;
+    if (aiPrincessSuperTimer % 40 === 0) {
+      inputState.ai['ShiftLeft'] = true;
+    }
+    return;
+  }
+
+  aiPrincessTimer--;
+  if (aiPrincessTimer <= 0 || aiPrincessPath.length === 0) {
+    const target = findPrincessTarget();
+    if (target) {
+      aiPrincessPath = bfsPathHero(hero.x, hero.y, target.x, target.y);
+    }
+    aiPrincessTimer = randInt(20, 40);
+  }
+
+  // Use superpower if stuck in a web
+  if (heroSlowTimer > 0 && heroSuperPowers > 0) {
+    inputState.ai['ShiftLeft'] = true;
+    return;
+  }
+
+  // Follow path
+  if (aiPrincessPath.length > 0) {
+    const next = aiPrincessPath[0];
+    const dx = next.x - hero.x, dy = next.y - hero.y;
+    if (dx===1) inputState.ai['ArrowRight'] = true;
+    else if (dx===-1) inputState.ai['ArrowLeft'] = true;
+    else if (dy===1) inputState.ai['ArrowDown'] = true;
+    else if (dy===-1) inputState.ai['ArrowUp'] = true;
+    if (hero.x===next.x && hero.y===next.y) aiPrincessPath.shift();
+  }
+
+  // Add some confusion based on difficulty (makes it easier for witch player)
+  const confusionRate = aiDifficulty==='easy' ? 0.4 : aiDifficulty==='medium' ? 0.2 : 0.08;
+  if (Math.random() < confusionRate && aiPrincessPath.length > 0) {
+    // Occasionally pause (skip a frame of input)
+    inputState.ai['ArrowUp'] = false;
+    inputState.ai['ArrowDown'] = false;
+    inputState.ai['ArrowLeft'] = false;
+    inputState.ai['ArrowRight'] = false;
+  }
+}
+
 function updateAI() {
   if (gameMode !== '1p') return;
   if (state !== S.PLAYING && state !== S.HERO_FREED && state !== S.PRINCESS_TRAPPED) return;
   clearAiInputs();
   aiTimer++;
 
-  switch (aiDifficulty) {
-    case 'easy':
-      if (aiTimer % 2 === 0) aiMoveRandom();
-      aiPlaceWeb(0.4, 0, 12);
-      break;
-    case 'medium':
-      aiMoveToward(0.25);
-      aiPlaceWeb(0.5, 0.12, 20);
-      break;
-    case 'hard':
-      aiMoveBFS();
-      aiPlaceWeb(0.7, 0.25, 99);
-      break;
+  if (playerRole === 'witch') {
+    // Player controls witch, AI controls princess
+    updateAIPrincess();
+  } else {
+    // Player controls princess, AI controls witch
+    switch (aiDifficulty) {
+      case 'easy':
+        if (aiTimer % 2 === 0) aiMoveRandom();
+        aiPlaceWeb(0.4, 0, 12);
+        break;
+      case 'medium':
+        aiMoveToward(0.25);
+        aiPlaceWeb(0.5, 0.12, 20);
+        break;
+      case 'hard':
+        aiMoveBFS();
+        aiPlaceWeb(0.7, 0.25, 99);
+        break;
+    }
   }
 }
 
